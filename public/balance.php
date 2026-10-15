@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
+require_once __DIR__ . '/../includes/absence.php';
 
 $user = requireLogin();
 
@@ -15,7 +16,8 @@ $today = (new DateTimeImmutable('today'))->format('Y-m-d');
 $yesterday = (new DateTimeImmutable('yesterday'))->format('Y-m-d');
 
 $workdaysClosed = workdaysBetween($startDate, $yesterday);
-$soll = $workdaysClosed * $target;
+$absentClosed = $startDate <= $yesterday ? count(absenceWeekdays((int)$user['id'], $startDate, $yesterday)) : 0;
+$soll = ($workdaysClosed - $absentClosed) * $target;
 
 $stmt = db()->prepare(
     "SELECT start_time, end_time FROM work_sessions
@@ -41,19 +43,25 @@ while ($r = $todayStmt->fetch()) {
     if (!$end) { $end = date('Y-m-d H:i:s'); $todayRunning = true; }
     $todayIst += (int)round(diffSeconds($r['start_time'], $end) / 60);
 }
-$todayTarget = isWeekday($today) ? $target : 0;
-
 $daysBack = 14;
+$windowStart = (new DateTimeImmutable("-".($daysBack-1)." days"))->format('Y-m-d');
+$absent = absenceWeekdays((int)$user['id'], $windowStart, $today);
+$todayTarget = isWeekday($today) && !isset($absent[$today]) ? $target : 0;
+
 $daily = [];
 for ($i = $daysBack - 1; $i >= 0; $i--) {
     $d = (new DateTimeImmutable("-$i days"))->format('Y-m-d');
-    $daily[$d] = ['ist' => 0, 'soll' => isWeekday($d) ? $target : 0];
+    $daily[$d] = [
+        'ist' => 0,
+        'soll' => isWeekday($d) && !isset($absent[$d]) ? $target : 0,
+        'absence' => $absent[$d] ?? null,
+    ];
 }
 $dailyStmt = db()->prepare(
     "SELECT DATE(start_time) AS d, start_time, end_time FROM work_sessions
      WHERE user_id = ? AND DATE(start_time) >= ?"
 );
-$dailyStmt->execute([$user['id'], (new DateTimeImmutable("-".($daysBack-1)." days"))->format('Y-m-d')]);
+$dailyStmt->execute([$user['id'], $windowStart]);
 while ($r = $dailyStmt->fetch()) {
     if (!isset($daily[$r['d']])) continue;
     $end = $r['end_time'] ?: date('Y-m-d H:i:s');
@@ -66,7 +74,8 @@ renderHeader('Zeitkonto', 'balance');
     <h2>Zeitkonto</h2>
     <p class="muted">
         Berechnung ab <strong><?= h($startDate) ?></strong> bis einschließlich gestern.
-        Soll = <?= sprintf('%dh %02dm', intdiv($target, 60), $target % 60) ?> pro Werktag (Mo–Fr).
+        Soll = <?= sprintf('%dh %02dm', intdiv($target, 60), $target % 60) ?> pro Werktag (Mo–Fr),
+        ohne Urlaubs- und Krankheitstage<?= $absentClosed ? ' (' . $absentClosed . ($absentClosed === 1 ? ' Tag)' : ' Tage)') : '' ?>.
     </p>
     <div class="balance-grid">
         <div class="balance-tile">
@@ -120,7 +129,7 @@ renderHeader('Zeitkonto', 'balance');
         ?>
             <tr class="<?= $isWeekend ? 'weekend' : '' ?>">
                 <td><?= h($dt->format('d.m.Y')) ?></td>
-                <td><?= h($weekdayNames[(int)$dt->format('w')]) ?></td>
+                <td><?= h($weekdayNames[(int)$dt->format('w')]) ?><?php if ($v['absence']): ?> <span class="cal-chip <?= h($v['absence']) ?>"><?= h(absenceLabel($v['absence'])) ?></span><?php endif; ?></td>
                 <td class="num"><?= h(sprintf('%dh %02dm', intdiv($v['soll'], 60), $v['soll'] % 60)) ?></td>
                 <td class="num"><?= h(sprintf('%dh %02dm', intdiv($v['ist'], 60), $v['ist'] % 60)) ?></td>
                 <td class="num <?= $diff >= 0 ? 'pos' : 'neg' ?>"><?= h(fmtSignedHM($diff)) ?></td>

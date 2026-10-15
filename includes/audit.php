@@ -6,10 +6,17 @@ require_once __DIR__ . '/db.php';
 const AUDIT_FIELDS = [
     'work_session' => ['start_time', 'end_time'],
     'job_entry' => ['job_name', 'start_time', 'end_time', 'note', 'is_recorded'],
+    'absence' => ['type', 'start_date', 'end_date', 'note'],
+];
+
+const AUDIT_TABLES = [
+    'work_session' => 'work_sessions',
+    'job_entry' => 'job_entries',
+    'absence' => 'absences',
 ];
 
 function fetchEntity(string $type, int $id): ?array {
-    $table = $type === 'work_session' ? 'work_sessions' : 'job_entries';
+    $table = AUDIT_TABLES[$type];
     $cols = implode(',', AUDIT_FIELDS[$type]);
     $stmt = db()->prepare("SELECT id, user_id, $cols FROM $table WHERE id = ?");
     $stmt->execute([$id]);

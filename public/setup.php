@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/layout.php';
 
 if (userCount() > 0) {
     header('Location: /index.php');
@@ -56,5 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit">Admin anlegen</button>
         </form>
     </main>
+    <?= siteFooter() ?>
 </body>
 </html>

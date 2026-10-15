@@ -10,6 +10,20 @@ $user = requireLogin();
 csrfCheck();
 
 $action = postStr('action');
+
+if ($action === 'create') {
+    $start = parseDateTimeLocal((string)postParam('start_time', ''));
+    $end = parseDateTimeLocal((string)postParam('end_time', ''));
+    if (!$start) jsonError('Ungültige Startzeit.');
+    if (!$end) jsonError('Ungültige Endzeit.');
+    if (strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
+    $stmt = db()->prepare('INSERT INTO work_sessions (user_id, start_time, end_time) VALUES (?, ?, ?)');
+    $stmt->execute([$user['id'], $start, $end]);
+    $id = (int)db()->lastInsertId();
+    auditLog((int)$user['id'], 'work_session', $id, 'create', null, fetchEntity('work_session', $id));
+    jsonResponse(['ok' => true, 'id' => $id]);
+}
+
 $id = postInt('id');
 
 $stmt = db()->prepare('SELECT id FROM work_sessions WHERE id = ? AND user_id = ?');

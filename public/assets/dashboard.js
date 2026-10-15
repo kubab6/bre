@@ -38,6 +38,23 @@
         } catch (e) { Z.showError(errEl, e.message); }
     });
 
+    const createForm = document.getElementById('work-create-form');
+    const createErr = document.getElementById('work-create-error');
+    createForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        Z.clearError(createErr);
+        const fd = new FormData(createForm);
+        try {
+            await Z.postForm('/api/work_session.php', {
+                action: 'create',
+                csrf: fd.get('csrf'),
+                start_time: Z.localInputToServer(fd.get('start_time')),
+                end_time: Z.localInputToServer(fd.get('end_time')),
+            });
+            window.location.reload();
+        } catch (e) { Z.showError(createErr, e.message); }
+    });
+
     list.addEventListener('click', async (ev) => {
         const row = ev.target.closest('.session-row[data-id]');
         if (!row) return;

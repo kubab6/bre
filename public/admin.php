@@ -61,6 +61,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare('UPDATE users SET is_admin = 1 - is_admin WHERE id = ?')->execute([$id]);
             $msg = 'Admin-Rechte geändert.';
         }
+    } elseif ($action === 'update_footer') {
+        $text = postStr('footer_text');
+        $linksRaw = str_replace("\r\n", "\n", postStr('footer_links'));
+        $bad = [];
+        foreach (explode("\n", $linksRaw) as $line) {
+            if (trim($line) === '') continue;
+            $parts = array_map('trim', explode('|', $line, 2));
+            if (count($parts) !== 2 || $parts[0] === '' || !isSafeUrl($parts[1])) $bad[] = trim($line);
+        }
+        if (mb_strlen($text) > 300 || mb_strlen($linksRaw) > 2000) {
+            $err = 'Footer-Text oder Links zu lang.';
+        } elseif ($bad) {
+            $err = 'Ungültige Link-Zeile: „' . $bad[0] . '“. Format: Name | https://… oder Name | /pfad';
+        } else {
+            setSetting('footer_text', $text);
+            setSetting('footer_links', $linksRaw);
+            $msg = 'Footer gespeichert.';
+        }
     } elseif ($action === 'delete_user') {
         $id = postInt('user_id');
         if ($id === (int)$me['id']) {
@@ -142,6 +160,20 @@ renderHeader('Admin', 'admin');
         </tbody>
     </table>
     </div>
+</section>
+
+<section class="card">
+    <h2>Footer</h2>
+    <form method="post" class="footer-form">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="update_footer">
+        <label>Text (optional)<input type="text" name="footer_text" maxlength="300" value="<?= h(setting('footer_text')) ?>" placeholder="z.B. © Firma GmbH"></label>
+        <label>Links, einer pro Zeile im Format „Name | URL“
+            <textarea name="footer_links" rows="4" placeholder="Datenschutz | https://example.de/datenschutz&#10;Impressum | https://example.de/impressum"><?= h(setting('footer_links')) ?></textarea>
+        </label>
+        <p class="hint">Der Footer erscheint auf allen Seiten, auch auf der Login-Seite.</p>
+        <button type="submit" class="primary">Speichern</button>
+    </form>
 </section>
 
 <section class="card">

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/audit.php';
+require_once __DIR__ . '/../includes/absence.php';
 
 $user = requireLogin();
 
@@ -15,7 +16,7 @@ if (!$showAll) {
     $where[] = 'l.target_user_id = ?';
     $params[] = $user['id'];
 }
-if (in_array($entityFilter, ['work_session', 'job_entry'], true)) {
+if (isset(AUDIT_FIELDS[$entityFilter])) {
     $where[] = 'l.entity_type = ?';
     $params[] = $entityFilter;
 }
@@ -36,7 +37,7 @@ $stmt->execute($params);
 $entries = $stmt->fetchAll();
 
 function entityLabel(string $type): string {
-    return $type === 'work_session' ? 'Arbeitszeit' : ($type === 'job_entry' ? 'Auftrag' : $type);
+    return ['work_session' => 'Arbeitszeit', 'job_entry' => 'Auftrag', 'absence' => 'Abwesenheit'][$type] ?? $type;
 }
 
 function actionLabel(string $a): string {
@@ -50,12 +51,16 @@ function fieldLabel(string $f): string {
         'job_name' => 'Auftrag',
         'note' => 'Notiz',
         'is_recorded' => 'Eingetragen',
+        'type' => 'Art',
+        'start_date' => 'Von',
+        'end_date' => 'Bis',
     ][$f] ?? $f;
 }
 
 function fmtVal(string $field, $val): string {
     if ($val === null || $val === '') return '∅';
     if ($field === 'is_recorded') return ((int)$val === 1) ? 'Ja' : 'Nein';
+    if ($field === 'type') return absenceLabel((string)$val);
     return (string)$val;
 }
 
@@ -81,6 +86,7 @@ renderHeader('Protokoll', 'log');
                 <option value="">Alle</option>
                 <option value="work_session" <?= $entityFilter === 'work_session' ? 'selected' : '' ?>>Arbeitszeit</option>
                 <option value="job_entry" <?= $entityFilter === 'job_entry' ? 'selected' : '' ?>>Aufträge</option>
+                <option value="absence" <?= $entityFilter === 'absence' ? 'selected' : '' ?>>Abwesenheiten</option>
             </select>
         </label>
         <?php if ($user['is_admin']): ?>
