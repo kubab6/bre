@@ -6,7 +6,7 @@ require_once __DIR__ . '/../includes/audit.php';
 require_once __DIR__ . '/../includes/absence.php';
 
 $user = requireLogin();
-$isAdmin = !empty($user['is_admin']);
+$isManager = isManager($user);
 
 $month = $_GET['m'] ?? date('Y-m');
 if (!is_string($month) || !preg_match('/^\d{4}-\d{2}$/', $month) || !DateTimeImmutable::createFromFormat('!Y-m', $month)) {
@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $from = postStr('start_date');
         $to = postStr('end_date');
         $note = postStr('note');
-        $targetId = $isAdmin && postInt('user_id') > 0 ? postInt('user_id') : (int)$user['id'];
+        $targetId = $isManager && postInt('user_id') > 0 ? postInt('user_id') : (int)$user['id'];
         $fromDt = DateTimeImmutable::createFromFormat('!Y-m-d', $from);
         $toDt = DateTimeImmutable::createFromFormat('!Y-m-d', $to);
 
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'delete') {
         $id = postInt('id');
         $before = fetchEntity('absence', $id);
-        if (!$before || (!$isAdmin && (int)$before['user_id'] !== (int)$user['id'])) {
+        if (!$before || (!$isManager && (int)$before['user_id'] !== (int)$user['id'])) {
             $err = 'Eintrag nicht gefunden.';
         } else {
             db()->prepare('DELETE FROM absences WHERE id = ?')->execute([$id]);
@@ -90,7 +90,7 @@ foreach ($absences as $a) {
     }
 }
 
-$users = $isAdmin ? db()->query('SELECT id, username FROM users ORDER BY username')->fetchAll() : [];
+$users = $isManager ? db()->query('SELECT id, username FROM users ORDER BY username')->fetchAll() : [];
 
 $monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 $prev = $first->modify('-1 month')->format('Y-m');
@@ -145,7 +145,7 @@ renderHeader('Kalender', 'calendar');
     <form method="post" class="inline-form">
         <?= csrfField() ?>
         <input type="hidden" name="action" value="create">
-        <?php if ($isAdmin): ?>
+        <?php if ($isManager): ?>
             <label>Benutzer
                 <select name="user_id">
                     <?php foreach ($users as $u): ?>
@@ -185,9 +185,9 @@ renderHeader('Kalender', 'calendar');
                 <td data-label="Art"><span class="cal-chip <?= h($a['type']) ?>"><?= h(absenceLabel($a['type'])) ?></span></td>
                 <td data-label="Von"><?= h((new DateTimeImmutable($a['start_date']))->format('d.m.Y')) ?></td>
                 <td data-label="Bis"><?= h((new DateTimeImmutable($a['end_date']))->format('d.m.Y')) ?></td>
-                <td data-label="Notiz"><?= ($mine || $isAdmin) ? h($a['note']) : '' ?></td>
+                <td data-label="Notiz"><?= ($mine || $isManager) ? h($a['note']) : '' ?></td>
                 <td class="row-actions">
-                    <?php if ($mine || $isAdmin): ?>
+                    <?php if ($mine || $isManager): ?>
                         <form method="post" class="inline" onsubmit="return confirm('Abwesenheit löschen?')">
                             <?= csrfField() ?>
                             <input type="hidden" name="action" value="delete">
@@ -201,7 +201,7 @@ renderHeader('Kalender', 'calendar');
         </tbody>
     </table>
     </div>
-    <p class="hint">Notizen sehen nur die betroffene Person und Admins.</p>
+    <p class="hint">Notizen sehen nur die betroffene Person, Manager und Admins.</p>
     <?php endif; ?>
 </section>
 <?php

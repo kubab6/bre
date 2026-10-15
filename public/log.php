@@ -7,7 +7,7 @@ require_once __DIR__ . '/../includes/absence.php';
 
 $user = requireLogin();
 
-$showAll = !empty($_GET['all']) && $user['is_admin'];
+$showAll = !empty($_GET['all']) && isManager($user);
 $entityFilter = $_GET['entity'] ?? '';
 
 $where = [];
@@ -89,10 +89,10 @@ renderHeader('Protokoll', 'log');
                 <option value="absence" <?= $entityFilter === 'absence' ? 'selected' : '' ?>>Abwesenheiten</option>
             </select>
         </label>
-        <?php if ($user['is_admin']): ?>
+        <?php if (isManager($user)): ?>
             <label class="checkbox">
                 <input type="checkbox" name="all" value="1" <?= $showAll ? 'checked' : '' ?>>
-                Alle Benutzer (Admin)
+                Alle Benutzer
             </label>
         <?php endif; ?>
         <button type="submit">Filtern</button>

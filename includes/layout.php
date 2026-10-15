@@ -29,13 +29,13 @@ function renderHeader(string $title, string $active = ''): void {
         <a href="/balance.php" class="<?= $active === 'balance' ? 'active' : '' ?>">Zeitkonto</a>
         <a href="/calendar.php" class="<?= $active === 'calendar' ? 'active' : '' ?>">Kalender</a>
         <a href="/log.php" class="<?= $active === 'log' ? 'active' : '' ?>">Protokoll</a>
-        <?php if ($u && $u['is_admin']): ?>
-            <a href="/admin.php" class="<?= $active === 'admin' ? 'active' : '' ?>">Admin</a>
+        <?php if (isManager($u)): ?>
+            <a href="/admin.php" class="<?= $active === 'admin' ? 'active' : '' ?>">Verwaltung</a>
         <?php endif; ?>
     </nav>
     <div class="user">
         <button type="button" id="theme-toggle" class="theme-toggle" title="Theme wechseln">Theme</button>
-        <span><?= h($u['username'] ?? '') ?></span>
+        <a href="/account.php" class="account<?= $active === 'account' ? ' active' : '' ?>" title="Mein Konto"><?= h($u['username'] ?? '') ?></a>
         <a href="/logout.php" class="logout">Abmelden</a>
     </div>
 </header>
@@ -71,6 +71,24 @@ function siteFooter(): string {
         $html .= '<a href="' . h($l['url']) . '">' . h($l['label']) . '</a>';
     }
     return $html . '</footer>';
+}
+
+/**
+ * Auswahl des angezeigten Benutzers für Manager (leer für alle anderen).
+ */
+function userSwitcher(array $me, array $viewed, string $page): string {
+    if (!isManager($me)) return '';
+    $users = db()->query('SELECT id, username FROM users ORDER BY username')->fetchAll();
+    $html = '<form method="get" action="' . h($page) . '" class="user-switch"><label>Benutzer anzeigen<select name="user" onchange="this.form.submit()">';
+    foreach ($users as $u) {
+        $sel = (int)$u['id'] === (int)$viewed['id'] ? ' selected' : '';
+        $html .= '<option value="' . (int)$u['id'] . '"' . $sel . '>' . h($u['username']) . '</option>';
+    }
+    $html .= '</select></label><noscript><button type="submit">Anzeigen</button></noscript></form>';
+    if ((int)$viewed['id'] !== (int)$me['id']) {
+        $html .= '<p class="flash viewing">Du siehst die Daten von <strong>' . h($viewed['username']) . '</strong>. <a href="' . h($page) . '">Zurück zu meinen Daten</a></p>';
+    }
+    return $html;
 }
 
 function renderFooter(string $jsFile = ''): void {

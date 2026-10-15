@@ -38,6 +38,7 @@
                 await Z.postForm('/api/job.php', {
                     action: 'create',
                     csrf: fd.get('csrf'),
+                    user_id: fd.get('user_id'),
                     job_name: fd.get('job_name'),
                     note: fd.get('note'),
                     start_time: Z.localInputToServer(fd.get('start_time')),

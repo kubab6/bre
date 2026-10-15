@@ -3,19 +3,34 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
 
-$me = requireAdmin();
+$me = requireManager();
+$meIsAdmin = isAdmin($me);
+
+// Rollen, die der angemeldete Benutzer vergeben darf (Manager keine Admins).
+$assignableRoles = $meIsAdmin ? ROLES : array_diff_key(ROLES, ['admin' => true]);
 
 $msg = null;
 $err = null;
 
+/** Lädt den Ziel-Benutzer einer Aktion, wenn $me ihn bearbeiten darf. */
+function manageableUser(array $me, int $id): ?array {
+    $stmt = db()->prepare('SELECT id, username, role FROM users WHERE id = ?');
+    $stmt->execute([$id]);
+    $u = $stmt->fetch();
+    return ($u && canManageUser($me, $u)) ? $u : null;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
     $action = postStr('action');
+    $target = in_array($action, ['update_balance', 'reset_password', 'set_role', 'delete_user'], true)
+        ? manageableUser($me, postInt('user_id'))
+        : null;
 
     if ($action === 'create_user') {
         $u = postStr('username');
         $p = (string)postParam('password', '');
-        $isAdmin = postInt('is_admin') === 1 ? 1 : 0;
+        $role = postStr('role', 'user');
         $targetMin = max(0, postInt('daily_target_minutes', 480));
         $startDate = postStr('balance_start_date');
         if ($startDate === '' || !DateTime::createFromFormat('Y-m-d', $startDate)) {
@@ -23,76 +38,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($u === '' || strlen($p) < 8) {
             $err = 'Benutzername erforderlich; Passwort min. 8 Zeichen.';
+        } elseif (!isset($assignableRoles[$role])) {
+            $err = 'Diese Rolle darfst du nicht vergeben.';
         } else {
             try {
-                $stmt = db()->prepare('INSERT INTO users (username, password_hash, is_admin, daily_target_minutes, balance_start_date) VALUES (?, ?, ?, ?, ?)');
-                $stmt->execute([$u, password_hash($p, PASSWORD_DEFAULT), $isAdmin, $targetMin, $startDate]);
-                $msg = 'Benutzer „' . $u . '" angelegt.';
+                $stmt = db()->prepare('INSERT INTO users (username, password_hash, is_admin, role, daily_target_minutes, balance_start_date) VALUES (?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$u, password_hash($p, PASSWORD_DEFAULT), $role === 'admin' ? 1 : 0, $role, $targetMin, $startDate]);
+                $msg = 'Benutzer „' . $u . '“ angelegt.';
             } catch (PDOException $e) {
                 $err = 'Benutzername bereits vergeben.';
             }
         }
+    } elseif ($action === 'update_footer') {
+        if (!$meIsAdmin) {
+            $err = 'Nur Admins dürfen den Footer ändern.';
+        } else {
+            $text = postStr('footer_text');
+            $linksRaw = str_replace("\r\n", "\n", postStr('footer_links'));
+            $bad = [];
+            foreach (explode("\n", $linksRaw) as $line) {
+                if (trim($line) === '') continue;
+                $parts = array_map('trim', explode('|', $line, 2));
+                if (count($parts) !== 2 || $parts[0] === '' || !isSafeUrl($parts[1])) $bad[] = trim($line);
+            }
+            if (mb_strlen($text) > 300 || mb_strlen($linksRaw) > 2000) {
+                $err = 'Footer-Text oder Links zu lang.';
+            } elseif ($bad) {
+                $err = 'Ungültige Link-Zeile: „' . $bad[0] . '“. Format: Name | https://… oder Name | /pfad';
+            } else {
+                setSetting('footer_text', $text);
+                setSetting('footer_links', $linksRaw);
+                $msg = 'Footer gespeichert.';
+            }
+        }
+    } elseif ($action !== '' && !$target) {
+        $err = 'Diesen Benutzer darfst du nicht bearbeiten.';
     } elseif ($action === 'update_balance') {
-        $id = postInt('user_id');
         $targetMin = max(0, postInt('daily_target_minutes'));
         $startDate = postStr('balance_start_date');
         if ($startDate === '' || !DateTime::createFromFormat('Y-m-d', $startDate)) {
             $err = 'Ungültiges Startdatum.';
         } else {
             db()->prepare('UPDATE users SET daily_target_minutes = ?, balance_start_date = ? WHERE id = ?')
-                ->execute([$targetMin, $startDate, $id]);
+                ->execute([$targetMin, $startDate, $target['id']]);
             $msg = 'Zeitkonto-Konfiguration gespeichert.';
         }
     } elseif ($action === 'reset_password') {
-        $id = postInt('user_id');
         $p = (string)postParam('password', '');
-        if ($id <= 0 || strlen($p) < 8) {
+        if (strlen($p) < 8) {
             $err = 'Passwort min. 8 Zeichen.';
         } else {
-            $stmt = db()->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-            $stmt->execute([password_hash($p, PASSWORD_DEFAULT), $id]);
-            $msg = 'Passwort aktualisiert.';
+            db()->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+                ->execute([password_hash($p, PASSWORD_DEFAULT), $target['id']]);
+            $msg = 'Passwort für „' . $target['username'] . '“ aktualisiert.';
         }
-    } elseif ($action === 'toggle_admin') {
-        $id = postInt('user_id');
-        if ($id === (int)$me['id']) {
-            $err = 'Eigene Admin-Rechte können nicht entfernt werden.';
+    } elseif ($action === 'set_role') {
+        $role = postStr('role');
+        if ((int)$target['id'] === (int)$me['id']) {
+            $err = 'Die eigene Rolle kann nicht geändert werden.';
+        } elseif (!isset($assignableRoles[$role])) {
+            $err = 'Diese Rolle darfst du nicht vergeben.';
         } else {
-            db()->prepare('UPDATE users SET is_admin = 1 - is_admin WHERE id = ?')->execute([$id]);
-            $msg = 'Admin-Rechte geändert.';
-        }
-    } elseif ($action === 'update_footer') {
-        $text = postStr('footer_text');
-        $linksRaw = str_replace("\r\n", "\n", postStr('footer_links'));
-        $bad = [];
-        foreach (explode("\n", $linksRaw) as $line) {
-            if (trim($line) === '') continue;
-            $parts = array_map('trim', explode('|', $line, 2));
-            if (count($parts) !== 2 || $parts[0] === '' || !isSafeUrl($parts[1])) $bad[] = trim($line);
-        }
-        if (mb_strlen($text) > 300 || mb_strlen($linksRaw) > 2000) {
-            $err = 'Footer-Text oder Links zu lang.';
-        } elseif ($bad) {
-            $err = 'Ungültige Link-Zeile: „' . $bad[0] . '“. Format: Name | https://… oder Name | /pfad';
-        } else {
-            setSetting('footer_text', $text);
-            setSetting('footer_links', $linksRaw);
-            $msg = 'Footer gespeichert.';
+            db()->prepare('UPDATE users SET role = ?, is_admin = ? WHERE id = ?')
+                ->execute([$role, $role === 'admin' ? 1 : 0, $target['id']]);
+            $msg = 'Rolle von „' . $target['username'] . '“ ist jetzt ' . roleLabel($role) . '.';
         }
     } elseif ($action === 'delete_user') {
-        $id = postInt('user_id');
-        if ($id === (int)$me['id']) {
+        if ((int)$target['id'] === (int)$me['id']) {
             $err = 'Eigener Account kann nicht gelöscht werden.';
         } else {
-            db()->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
+            db()->prepare('DELETE FROM users WHERE id = ?')->execute([$target['id']]);
             $msg = 'Benutzer gelöscht.';
         }
     }
 }
 
-$users = db()->query('SELECT id, username, is_admin, created_at, daily_target_minutes, balance_start_date FROM users ORDER BY username')->fetchAll();
+$users = db()->query('SELECT id, username, role, created_at, daily_target_minutes, balance_start_date FROM users ORDER BY username')->fetchAll();
 
-renderHeader('Admin', 'admin');
+renderHeader('Verwaltung', 'admin');
 ?>
 <?php if ($msg): ?><p class="flash success"><?= h($msg) ?></p><?php endif; ?>
 <?php if ($err): ?><p class="flash error"><?= h($err) ?></p><?php endif; ?>
@@ -106,7 +129,13 @@ renderHeader('Admin', 'admin');
         <label>Passwort<input type="password" name="password" required minlength="8"></label>
         <label>Soll/Tag (Min)<input type="number" name="daily_target_minutes" value="480" min="0" max="1440" style="width:90px"></label>
         <label>Konto-Start<input type="date" name="balance_start_date" value="<?= h(date('Y-m-d')) ?>"></label>
-        <label class="checkbox"><input type="checkbox" name="is_admin" value="1"> Admin</label>
+        <label>Rolle
+            <select name="role">
+                <?php foreach ($assignableRoles as $k => $label): ?>
+                    <option value="<?= h($k) ?>"><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
         <button type="submit" class="primary">Anlegen</button>
     </form>
 </section>
@@ -115,13 +144,33 @@ renderHeader('Admin', 'admin');
     <h2>Benutzer</h2>
     <div class="table-wrap">
     <table class="users">
-        <thead><tr><th>Benutzer</th><th>Admin</th><th>Zeitkonto</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
+        <thead><tr><th>Benutzer</th><th>Rolle</th><th>Zeitkonto</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
         <tbody>
-        <?php foreach ($users as $u): ?>
+        <?php foreach ($users as $u):
+            $isMe = (int)$u['id'] === (int)$me['id'];
+            $canEdit = canManageUser($me, $u);
+        ?>
             <tr>
-                <td data-label="Benutzer"><?= h($u['username']) ?><?= $u['id'] == $me['id'] ? ' <span class="muted">(du)</span>' : '' ?></td>
-                <td data-label="Admin"><?= $u['is_admin'] ? 'Ja' : 'Nein' ?></td>
+                <td data-label="Benutzer"><?= h($u['username']) ?><?= $isMe ? ' <span class="muted">(du)</span>' : '' ?></td>
+                <td data-label="Rolle">
+                    <?php if ($canEdit && !$isMe): ?>
+                        <form method="post" class="inline">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="action" value="set_role">
+                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                            <select name="role" onchange="if (confirm('Rolle ändern?')) this.form.submit(); else this.form.reset();">
+                                <?php foreach ($assignableRoles as $k => $label): ?>
+                                    <option value="<?= h($k) ?>" <?= $u['role'] === $k ? 'selected' : '' ?>><?= h($label) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <noscript><button type="submit">Setzen</button></noscript>
+                        </form>
+                    <?php else: ?>
+                        <?= h(roleLabel($u['role'])) ?>
+                    <?php endif; ?>
+                </td>
                 <td data-label="Zeitkonto">
+                    <?php if ($canEdit): ?>
                     <form method="post" class="inline">
                         <?= csrfField() ?>
                         <input type="hidden" name="action" value="update_balance">
@@ -130,29 +179,30 @@ renderHeader('Admin', 'admin');
                         <input type="date" name="balance_start_date" value="<?= h($u['balance_start_date']) ?>" title="Startdatum">
                         <button type="submit">Speichern</button>
                     </form>
+                    <?php else: ?>
+                        <span class="muted"><?= sprintf('%dh %02dm', intdiv((int)$u['daily_target_minutes'], 60), (int)$u['daily_target_minutes'] % 60) ?> / Tag</span>
+                    <?php endif; ?>
                 </td>
                 <td data-label="Erstellt"><?= h($u['created_at']) ?></td>
                 <td data-label="Aktionen" class="row-actions">
-                    <form method="post" class="inline">
-                        <?= csrfField() ?>
-                        <input type="hidden" name="action" value="reset_password">
-                        <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                        <input type="password" name="password" placeholder="Neues Passwort" minlength="8" required>
-                        <button type="submit">PW setzen</button>
-                    </form>
-                    <?php if ($u['id'] != $me['id']): ?>
-                        <form method="post" class="inline" onsubmit="return confirm('Admin-Rechte ändern?')">
+                    <?php if ($canEdit): ?>
+                        <form method="post" class="inline">
                             <?= csrfField() ?>
-                            <input type="hidden" name="action" value="toggle_admin">
+                            <input type="hidden" name="action" value="reset_password">
                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                            <button type="submit"><?= $u['is_admin'] ? 'Admin entfernen' : 'Zum Admin' ?></button>
+                            <input type="password" name="password" placeholder="Neues Passwort" minlength="8" required>
+                            <button type="submit">PW setzen</button>
                         </form>
-                        <form method="post" class="inline" onsubmit="return confirm('Benutzer und alle Zeiten löschen?')">
-                            <?= csrfField() ?>
-                            <input type="hidden" name="action" value="delete_user">
-                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                            <button type="submit" class="danger">Löschen</button>
-                        </form>
+                        <?php if (!$isMe): ?>
+                            <form method="post" class="inline" onsubmit="return confirm('Benutzer und alle Zeiten löschen?')">
+                                <?= csrfField() ?>
+                                <input type="hidden" name="action" value="delete_user">
+                                <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                <button type="submit" class="danger">Löschen</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="muted">Nur durch Admins änderbar</span>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -162,6 +212,7 @@ renderHeader('Admin', 'admin');
     </div>
 </section>
 
+<?php if ($meIsAdmin): ?>
 <section class="card">
     <h2>Footer</h2>
     <form method="post" class="footer-form">
@@ -175,6 +226,7 @@ renderHeader('Admin', 'admin');
         <button type="submit" class="primary">Speichern</button>
     </form>
 </section>
+<?php endif; ?>
 
 <section class="card">
     <h2>CSV-Export</h2>

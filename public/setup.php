@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (strlen($p) < 8) {
         $error = 'Passwort muss mindestens 8 Zeichen haben.';
     } else {
-        $stmt = db()->prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 1)');
+        $stmt = db()->prepare("INSERT INTO users (username, password_hash, is_admin, role) VALUES (?, ?, 1, 'admin')");
         $stmt->execute([$u, password_hash($p, PASSWORD_DEFAULT)]);
         login($u, $p);
         header('Location: /dashboard.php');

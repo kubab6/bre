@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
 
-$user = requireLogin();
+$me = requireLogin();
+$user = viewedUser($me);
+$own = (int)$user['id'] === (int)$me['id'];
 
 $active = db()->prepare('SELECT id, job_name, note, start_time FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
 $active->execute([$user['id']]);
@@ -30,7 +32,12 @@ arsort($totalsByJob);
 
 renderHeader('Aufträge', 'jobs');
 ?>
+<?= userSwitcher($me, $user, '/jobs.php') ?>
 <section class="card stopwatch">
+    <?php if (!$own): ?>
+    <h2>Aufträge von <?= h($user['username']) ?></h2>
+    <p class="muted"><?= $activeJob ? 'Läuft gerade: ' . h($activeJob['job_name']) . ' seit ' . h(substr($activeJob['start_time'], 11, 5)) : 'Kein laufender Auftrag' ?></p>
+    <?php else: ?>
     <h2>Auftragszeit erfassen</h2>
     <?php if ($activeJob): ?>
         <div class="clock" id="job-clock" data-active="1" data-start="<?= h($activeJob['start_time']) ?>">
@@ -53,11 +60,13 @@ renderHeader('Aufträge', 'jobs');
         </form>
     <?php endif; ?>
     <p class="hint" id="job-error" hidden></p>
+    <?php endif; ?>
 
-    <details class="manual-add">
+    <details class="manual-add"<?= $own ? '' : ' open' ?>>
         <summary>Manuellen Eintrag anlegen (ohne Stoppuhr)</summary>
         <form id="job-create-form" class="inline-form">
             <?= csrfField() ?>
+            <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
             <label>Auftrag<input type="text" name="job_name" required maxlength="200"></label>
             <label>Start<input type="datetime-local" name="start_time" required></label>
             <label>Ende<input type="datetime-local" name="end_time" required></label>

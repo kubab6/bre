@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
 
-$user = requireLogin();
+$me = requireLogin();
+$user = viewedUser($me);
+$own = (int)$user['id'] === (int)$me['id'];
 
 $active = db()->prepare('SELECT id, start_time FROM work_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
 $active->execute([$user['id']]);
@@ -36,7 +38,9 @@ for ($i = 0; $i < 7; $i++) {
 
 renderHeader('Arbeitszeit', 'dashboard');
 ?>
+<?= userSwitcher($me, $user, '/dashboard.php') ?>
 <section class="card stopwatch">
+    <?php if ($own): ?>
     <h2>Stoppuhr</h2>
     <div class="clock" id="clock"
          data-active="<?= $activeSession ? '1' : '0' ?>"
@@ -51,11 +55,16 @@ renderHeader('Arbeitszeit', 'dashboard');
         <button id="btn-clock-out" type="button" class="danger" <?= $activeSession ? '' : 'hidden' ?>>Ausstechen</button>
     </div>
     <p class="hint" id="clock-error" hidden></p>
+    <?php else: ?>
+    <h2>Arbeitszeit von <?= h($user['username']) ?></h2>
+    <p class="muted"><?= $activeSession ? 'Eingestochen seit ' . h(substr($activeSession['start_time'], 11, 5)) : 'Ausgestochen' ?></p>
+    <?php endif; ?>
 
-    <details class="manual-add">
+    <details class="manual-add"<?= $own ? '' : ' open' ?>>
         <summary>Arbeitszeit nachtragen (ohne Stoppuhr)</summary>
         <form id="work-create-form" class="inline-form">
             <?= csrfField() ?>
+            <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
             <label>Start<input type="datetime-local" name="start_time" required></label>
             <label>Ende<input type="datetime-local" name="end_time" required></label>
             <button type="submit" class="primary">Speichern</button>

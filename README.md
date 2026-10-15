@@ -13,9 +13,26 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 - **Änderungs-Protokoll** aller Zeit- und Abwesenheitsänderungen
 - **Footer** mit Text und Links (z.B. Datenschutz, Impressum), im Admin-Panel einstellbar
 - **Login** mit Session (bleibt 30 Tage ohne Aktivität gültig, `SESSION_LIFETIME` in `includes/config.php`), Passwort-Hashes (`password_hash`/`password_verify`)
-- **Admin-Panel**: Benutzer anlegen / löschen / Passwort setzen / Admin-Rechte verwalten
+- **Rollen** Benutzer, Manager und Admin (siehe unten)
+- **Mein Konto**: eigenes Passwort ändern
+- **Verwaltung**: Benutzer anlegen / löschen / Passwort setzen / Rolle vergeben
 - **CSV-Export** (Arbeitszeit oder Aufträge), filterbar nach Benutzer und Zeitraum
 - **CSRF-Schutz** auf allen POST-Routen
+
+## Rollen
+
+| | Benutzer | Manager | Admin |
+|---|---|---|---|
+| Eigene Arbeitszeit, Aufträge, Zeitkonto | ✓ | ✓ | ✓ |
+| Teamkalender ansehen, eigene Abwesenheiten | ✓ | ✓ | ✓ |
+| Eigenes Passwort ändern | ✓ | ✓ | ✓ |
+| Zeiten, Aufträge und Zeitkonto aller Benutzer ansehen und bearbeiten | | ✓ | ✓ |
+| Alle Kalenderdetails, Abwesenheiten für andere eintragen | | ✓ | ✓ |
+| Benutzer verwalten | | ✓ (außer Admins) | ✓ |
+| CSV-Export, Protokoll aller Benutzer | | ✓ | ✓ |
+| Footer und weitere Server-Einstellungen | | | ✓ |
+
+Bestehende Admins werden beim Update automatisch zur Rolle Admin, alle anderen zu Benutzer.
 
 ## Voraussetzungen
 
@@ -49,7 +66,8 @@ public/             # DocumentRoot
   calendar.php      # Urlaubs-/Krankheitskalender
   log.php           # Änderungs-Protokoll
   jobs.php          # Auftragszeiten + Notizen
-  admin.php         # Benutzerverwaltung + CSV-Filter
+  account.php       # Mein Konto (Passwort ändern)
+  admin.php         # Verwaltung: Benutzer, Footer, CSV-Filter
   admin_export.php  # CSV-Download
   logout.php
   api/              # AJAX-Endpunkte (POST + JSON)

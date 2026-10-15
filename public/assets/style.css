@@ -455,3 +455,10 @@ table tbody tr.empty td { color: var(--muted); padding: 12px 8px; }
 .absence-wrap { overflow-x: auto; }
 .absence-table td { white-space: nowrap; }
 .absence-table td[data-label="Notiz"] { white-space: normal; }
+
+/* Benutzer-Auswahl für Manager */
+.user-switch { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.user-switch label { flex-direction: row; align-items: center; gap: 8px; }
+.flash.viewing { background: var(--card); border: 1px solid var(--primary); }
+.topbar .user a.account { color: var(--muted); }
+.topbar .user a.account.active { color: var(--primary); }

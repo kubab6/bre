@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
-requireAdmin();
+requireManager();
 
 $type = $_GET['type'] ?? 'work';
 $userId = isset($_GET['user_id']) && $_GET['user_id'] !== '' ? (int)$_GET['user_id'] : null;
