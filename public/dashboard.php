@@ -51,6 +51,17 @@ renderHeader('Arbeitszeit', 'dashboard');
         <button id="btn-clock-out" type="button" class="danger" <?= $activeSession ? '' : 'hidden' ?>>Ausstechen</button>
     </div>
     <p class="hint" id="clock-error" hidden></p>
+
+    <details class="manual-add">
+        <summary>Arbeitszeit nachtragen (ohne Stoppuhr)</summary>
+        <form id="work-create-form" class="inline-form">
+            <?= csrfField() ?>
+            <label>Start<input type="datetime-local" name="start_time" required></label>
+            <label>Ende<input type="datetime-local" name="end_time" required></label>
+            <button type="submit" class="primary">Speichern</button>
+        </form>
+        <p class="hint" id="work-create-error" hidden></p>
+    </details>
 </section>
 
 <section class="card">

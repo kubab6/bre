@@ -27,6 +27,7 @@ function renderHeader(string $title, string $active = ''): void {
         <a href="/dashboard.php" class="<?= $active === 'dashboard' ? 'active' : '' ?>">Arbeitszeit</a>
         <a href="/jobs.php" class="<?= $active === 'jobs' ? 'active' : '' ?>">Aufträge</a>
         <a href="/balance.php" class="<?= $active === 'balance' ? 'active' : '' ?>">Zeitkonto</a>
+        <a href="/calendar.php" class="<?= $active === 'calendar' ? 'active' : '' ?>">Kalender</a>
         <a href="/log.php" class="<?= $active === 'log' ? 'active' : '' ?>">Protokoll</a>
         <?php if ($u && $u['is_admin']): ?>
             <a href="/admin.php" class="<?= $active === 'admin' ? 'active' : '' ?>">Admin</a>
@@ -42,9 +43,40 @@ function renderHeader(string $title, string $active = ''): void {
     <?php
 }
 
+/**
+ * Footer-Links aus den Einstellungen: eine Zeile pro Link, Format "Name | URL".
+ */
+function footerLinks(): array {
+    $links = [];
+    foreach (preg_split('/\R/', setting('footer_links')) as $line) {
+        $parts = array_map('trim', explode('|', $line, 2));
+        if (count($parts) === 2 && $parts[0] !== '' && isSafeUrl($parts[1])) {
+            $links[] = ['label' => $parts[0], 'url' => $parts[1]];
+        }
+    }
+    return $links;
+}
+
+function isSafeUrl(string $url): bool {
+    return (bool)preg_match('#^(https?://|/(?!/))#i', $url);
+}
+
+function siteFooter(): string {
+    $text = setting('footer_text');
+    $links = footerLinks();
+    if ($text === '' && !$links) return '';
+    $html = '<footer class="site-footer">';
+    if ($text !== '') $html .= '<span>' . h($text) . '</span>';
+    foreach ($links as $l) {
+        $html .= '<a href="' . h($l['url']) . '">' . h($l['label']) . '</a>';
+    }
+    return $html . '</footer>';
+}
+
 function renderFooter(string $jsFile = ''): void {
     ?>
 </main>
+<?= siteFooter() ?>
 <script src="/assets/theme.js"></script>
 <?php if ($jsFile): ?>
 <script src="/assets/common.js"></script>

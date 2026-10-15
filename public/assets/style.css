@@ -399,3 +399,59 @@ table tbody tr.empty td { color: var(--muted); padding: 12px 8px; }
     .container { padding: 0 12px; margin: 16px auto; }
     .card { padding: 14px; }
 }
+
+/* Kalender */
+.cal-nav { display: flex; gap: 12px; font-size: 14px; }
+.calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-head { font-size: 12px; text-transform: uppercase; color: var(--muted); text-align: center; padding: 4px 0; }
+.cal-day {
+    min-height: 72px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cal-day.cal-empty { border-color: transparent; }
+.cal-day.weekend { background: var(--bg); }
+.cal-day.today { border-color: var(--primary); }
+.cal-num { font-size: 12px; color: var(--muted); }
+.cal-chip {
+    display: inline-block;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.cal-chip.vacation { background: var(--success-bg); color: var(--success-text); }
+.cal-chip.sick { background: var(--error-bg); color: var(--error-text); }
+@media (max-width: 600px) {
+    .cal-day { min-height: 52px; padding: 2px; }
+    .cal-chip { font-size: 10px; padding: 0 3px; }
+}
+
+/* Footer */
+.site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 18px;
+    padding: 16px;
+    font-size: 13px;
+    color: var(--muted);
+}
+.site-footer a { color: var(--muted); }
+.auth-body { flex-direction: column; }
+.auth-body .site-footer { width: 100%; }
+.footer-form { display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+.footer-form textarea { width: 100%; font-family: inherit; }
+.footer-form button { align-self: flex-start; }
+.absence-wrap { overflow-x: auto; }
+.absence-table td { white-space: nowrap; }
+.absence-table td[data-label="Notiz"] { white-space: normal; }
