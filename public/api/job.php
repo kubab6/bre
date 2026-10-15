@@ -41,8 +41,10 @@ if ($action === 'create') {
     if (!$start) jsonError('Ungültige Startzeit.');
     if ($endRaw !== '' && !$end) jsonError('Ungültige Endzeit.');
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
+    $targetId = targetUserId($user);
+    if ($targetId === null) jsonError('Benutzer nicht gefunden.', 404);
     $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, end_time, note) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute([$user['id'], $name, $start, $end, $note]);
+    $stmt->execute([$targetId, $name, $start, $end, $note]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'job_entry', $id, 'create', null, fetchEntity('job_entry', $id));
     jsonResponse(['ok' => true, 'id' => $id]);
@@ -61,8 +63,14 @@ if ($action === 'stop') {
 }
 
 $id = postInt('id');
-$stmt = db()->prepare('SELECT id FROM job_entries WHERE id = ? AND user_id = ?');
-$stmt->execute([$id, $user['id']]);
+// Manager dürfen die Einträge aller Benutzer bearbeiten.
+if (isManager($user)) {
+    $stmt = db()->prepare('SELECT id FROM job_entries WHERE id = ?');
+    $stmt->execute([$id]);
+} else {
+    $stmt = db()->prepare('SELECT id FROM job_entries WHERE id = ? AND user_id = ?');
+    $stmt->execute([$id, $user['id']]);
+}
 if (!$stmt->fetch()) jsonError('Eintrag nicht gefunden.', 404);
 
 if ($action === 'update') {

@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/absence.php';
 
-$user = requireLogin();
+$me = requireLogin();
+$user = viewedUser($me);
 
 $stmt = db()->prepare('SELECT daily_target_minutes, balance_start_date FROM users WHERE id = ?');
 $stmt->execute([$user['id']]);
@@ -70,6 +71,7 @@ while ($r = $dailyStmt->fetch()) {
 
 renderHeader('Zeitkonto', 'balance');
 ?>
+<?= userSwitcher($me, $user, '/balance.php') ?>
 <section class="card">
     <h2>Zeitkonto</h2>
     <p class="muted">

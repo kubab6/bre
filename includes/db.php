@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function db(): PDO {
     static $pdo = null;
@@ -28,6 +28,7 @@ function initSchema(PDO $pdo): void {
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             is_admin INTEGER NOT NULL DEFAULT 0,
+            role TEXT NOT NULL DEFAULT 'user',
             daily_target_minutes INTEGER NOT NULL DEFAULT 480,
             balance_start_date TEXT NOT NULL DEFAULT (DATE('now')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -109,6 +110,16 @@ function migrate(PDO $pdo): void {
     if ($version < 3) {
         createV3Tables($pdo);
         $pdo->exec('PRAGMA user_version = 3');
+    }
+
+    if ($version < 4) {
+        // Rollen statt Admin ja/nein; bisherige Admins werden zu "admin".
+        $userCols = array_column($pdo->query("PRAGMA table_info(users)")->fetchAll(), 'name');
+        if (!in_array('role', $userCols, true)) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+        }
+        $pdo->exec("UPDATE users SET role = 'admin' WHERE is_admin = 1");
+        $pdo->exec('PRAGMA user_version = 4');
     }
 }
 

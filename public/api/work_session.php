@@ -17,8 +17,10 @@ if ($action === 'create') {
     if (!$start) jsonError('Ungültige Startzeit.');
     if (!$end) jsonError('Ungültige Endzeit.');
     if (strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
+    $targetId = targetUserId($user);
+    if ($targetId === null) jsonError('Benutzer nicht gefunden.', 404);
     $stmt = db()->prepare('INSERT INTO work_sessions (user_id, start_time, end_time) VALUES (?, ?, ?)');
-    $stmt->execute([$user['id'], $start, $end]);
+    $stmt->execute([$targetId, $start, $end]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'work_session', $id, 'create', null, fetchEntity('work_session', $id));
     jsonResponse(['ok' => true, 'id' => $id]);
@@ -26,8 +28,14 @@ if ($action === 'create') {
 
 $id = postInt('id');
 
-$stmt = db()->prepare('SELECT id FROM work_sessions WHERE id = ? AND user_id = ?');
-$stmt->execute([$id, $user['id']]);
+// Manager dürfen die Einträge aller Benutzer bearbeiten.
+if (isManager($user)) {
+    $stmt = db()->prepare('SELECT id FROM work_sessions WHERE id = ?');
+    $stmt->execute([$id]);
+} else {
+    $stmt = db()->prepare('SELECT id FROM work_sessions WHERE id = ? AND user_id = ?');
+    $stmt->execute([$id, $user['id']]);
+}
 if (!$stmt->fetch()) {
     jsonError('Eintrag nicht gefunden.', 404);
 }

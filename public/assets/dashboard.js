@@ -18,11 +18,11 @@
         stopTicker = Z.startTicker(timeEl, startMs);
     }
 
-    if (clock.dataset.active === '1') {
+    if (clock && clock.dataset.active === '1') {
         startTicking(clock.dataset.start);
     }
 
-    btnIn.addEventListener('click', async () => {
+    if (btnIn) btnIn.addEventListener('click', async () => {
         Z.clearError(errEl);
         try {
             const res = await Z.postForm('/api/clock.php', { action: 'in', csrf });
@@ -30,7 +30,7 @@
         } catch (e) { Z.showError(errEl, e.message); }
     });
 
-    btnOut.addEventListener('click', async () => {
+    if (btnOut) btnOut.addEventListener('click', async () => {
         Z.clearError(errEl);
         try {
             await Z.postForm('/api/clock.php', { action: 'out', csrf });
@@ -48,6 +48,7 @@
             await Z.postForm('/api/work_session.php', {
                 action: 'create',
                 csrf: fd.get('csrf'),
+                user_id: fd.get('user_id'),
                 start_time: Z.localInputToServer(fd.get('start_time')),
                 end_time: Z.localInputToServer(fd.get('end_time')),
             });
