@@ -5,6 +5,15 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/helpers.php';
 
+/**
+ * Pfad zu einer Datei unter public/ mit Änderungsdatum als Version, damit
+ * Browser nach einem Update nicht mit alten JS/CSS-Dateien weiterarbeiten.
+ */
+function asset(string $path): string {
+    $file = __DIR__ . '/../public' . $path;
+    return is_file($file) ? $path . '?v=' . filemtime($file) : $path;
+}
+
 function renderHeader(string $title, string $active = ''): void {
     $u = currentUser();
     ?>
@@ -18,7 +27,7 @@ function renderHeader(string $title, string $active = ''): void {
     <link rel="icon" href="/favicon/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png">
     <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
-    <link rel="stylesheet" href="/assets/style.css">
+    <link rel="stylesheet" href="<?= h(asset('/assets/style.css')) ?>">
 </head>
 <body>
 <header class="topbar">
@@ -96,10 +105,10 @@ function renderFooter(string $jsFile = ''): void {
     ?>
 </main>
 <?= siteFooter() ?>
-<script src="/assets/theme.js"></script>
-<script src="/assets/common.js"></script>
+<script src="<?= h(asset('/assets/theme.js')) ?>"></script>
+<script src="<?= h(asset('/assets/common.js')) ?>"></script>
 <?php if ($jsFile): ?>
-<script src="<?= h($jsFile) ?>"></script>
+<script src="<?= h(asset($jsFile)) ?>"></script>
 <?php endif; ?>
 </body>
 </html>
