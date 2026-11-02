@@ -4,13 +4,14 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 
 ## Features
 
-- **Stoppuhr / Ein-Ausstechen** für die tägliche Arbeitszeit
+- **Stoppuhr / Ein-Ausstechen** für die tägliche Arbeitszeit, mit **Pause** und **Art** (Büro, Homeoffice, Außendienst)
 - **Letzte 7 Tage** direkt sichtbar, Zeiten inline editier- und löschbar
 - **Arbeitszeit nachtragen** ohne Stoppuhr (Start + Ende)
-- **Aufträge** mit eigener Stoppuhr, Kunde, Art (Fernwartung, Vor-Ort, Werkstatt), Auftragsname und Notiz; filterbar nach Kunde und Monat, sortierbar nach Datum oder Kunde; Häkchen „Abgerechnet“
+- **Aufträge** mit eigener Stoppuhr (mehrere gleichzeitig möglich), Kunde als Eingabefeld mit Vorschlägen (neue Namen werden automatisch als Kunde angelegt), Art (Fernwartung, Vor-Ort, Werkstatt), Auftragsname und Notiz; filterbar nach Kunde und Monat, sortierbar nach Datum oder Kunde; Häkchen „Abgerechnet“
 - **Kunden** mit Kundennummer, Adresse, Kontakt und Notiz; Monatsübersicht je Kunde mit Aufträgen und Material
-- **Material je Kunde** (Datum, Bezeichnung, Menge, Einheit, Notiz, abgerechnet)
-- **PDF-Leistungsnachweis** je Kunde und Monat mit Aufträgen, Summen je Art und Material (ohne externe Bibliothek)
+- **Material je Kunde** (Datum, Bezeichnung, Menge, Einheit, Einkaufspreis, Notiz, abgerechnet), erfassbar unter Aufträge und auf der Kundenseite
+- **PDF-Leistungsnachweis** je Kunde und Monat mit Aufträgen, Summen je Art und Material (ohne externe Bibliothek), als Variante für den Kunden oder intern mit Einkaufspreisen
+- **Name** je Benutzer (z.B. für PDF-Exporte), unter Mein Konto und in der Verwaltung
 - **Zeitkonto** mit Soll/Ist/Saldo; Urlaubs- und Krankheitstage zählen nicht als Soll
 - **Kalender** für Urlaub und Krankheit, für alle Benutzer einsehbar (Notizen nur für Betroffene und Admins)
 - **Änderungs-Protokoll** aller Zeit- und Abwesenheitsänderungen
@@ -54,6 +55,18 @@ Im Browser öffnen: <http://localhost:8080>
 
 Beim ersten Aufruf erscheint die Erst-Einrichtung — dort den Admin-Account anlegen.
 
+## Update auf eine neue Version
+
+**Wichtig: Der Ordner `data/` enthält alle Daten (`data/app.sqlite`) und darf beim Update nie überschrieben oder gelöscht werden.**
+
+1. Vorher eine Kopie von `data/app.sqlite` an einem sicheren Ort ablegen.
+2. Nur den Code aktualisieren:
+   - mit Git: `git pull` im Projektordner (der Inhalt von `data/` ist nicht im Repository und bleibt unberührt), oder
+   - per FTP/Upload: nur die Ordner `public/` und `includes/` (und `README.md`) hochladen und ersetzen, **nicht** den ganzen Projektordner und **nicht** `data/`.
+3. Seite aufrufen. Die Datenbank wird beim ersten Aufruf automatisch umgestellt. Vorher legt die App selbst eine Sicherung unter `data/backups/app-v<alte Version>-<Datum>.sqlite` an. Die Umstellung läuft in einer Transaktion: Schlägt sie fehl, bleibt die Datenbank unverändert.
+
+Falls nach einem Update die Erst-Einrichtung erscheint, wurde `data/app.sqlite` beim Hochladen ersetzt oder gelöscht: nichts eingeben, sondern die gesicherte Datei zurück nach `data/app.sqlite` kopieren.
+
 ## Deployment (Apache / Nginx)
 
 - DocumentRoot auf `public/` setzen.
@@ -89,7 +102,7 @@ SQLite-Datei wird beim ersten Start automatisch unter `data/app.sqlite` angelegt
 Tabellen: `users`, `work_sessions`, `job_entries`, `customers`, `materials`, `absences`, `settings`, `audit_log`.
 Bestehende Datenbanken werden beim nächsten Aufruf automatisch migriert.
 
-Backup = Kopie dieser Datei. Reset = Datei löschen, beim nächsten Aufruf neu einrichten.
+Backup = Kopie dieser Datei. Vor jeder Schema-Umstellung legt die App automatisch eine Kopie unter `data/backups/` an. Reset = Datei löschen, beim nächsten Aufruf neu einrichten.
 
 ## Zeitzone
 
@@ -99,5 +112,5 @@ Server läuft in `Europe/Berlin` (siehe `includes/config.php`). Beim Wechsel die
 
 - Trennzeichen: `;`  (Excel-freundlich)
 - Encoding: UTF-8 mit BOM
-- Spalten Arbeitszeit: Benutzer, Start, Ende, Dauer (Min)
-- Spalten Aufträge: Benutzer, Kunde, Art, Auftrag, Start, Ende, Dauer (Min), Notiz, Abgerechnet
+- Spalten Arbeitszeit: Mitarbeiter, Art, Start, Ende, Dauer (Min)
+- Spalten Aufträge: Mitarbeiter, Kunde, Art, Auftrag, Start, Ende, Dauer (Min), Notiz, Abgerechnet
