@@ -21,6 +21,8 @@
                     csrf: fd.get('csrf'),
                     job_name: fd.get('job_name'),
                     note: fd.get('note'),
+                    customer_id: fd.get('customer_id'),
+                    job_type: fd.get('job_type'),
                 });
                 window.location.reload();
             } catch (e) { Z.showError(errEl, e.message); }
@@ -41,6 +43,8 @@
                     user_id: fd.get('user_id'),
                     job_name: fd.get('job_name'),
                     note: fd.get('note'),
+                    customer_id: fd.get('customer_id'),
+                    job_type: fd.get('job_type'),
                     start_time: Z.localInputToServer(fd.get('start_time')),
                     end_time: Z.localInputToServer(fd.get('end_time')),
                 });
@@ -89,6 +93,8 @@
                 action: 'update', csrf, id,
                 job_name: row.querySelector('.edit-job').value,
                 note: row.querySelector('.edit-note').value,
+                customer_id: row.querySelector('.edit-customer').value,
+                job_type: row.querySelector('.edit-type').value,
                 start_time: Z.localInputToServer(row.querySelector('.edit-start').value),
                 end_time: Z.localInputToServer(row.querySelector('.edit-end').value),
             };

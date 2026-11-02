@@ -462,3 +462,47 @@ table tbody tr.empty td { color: var(--muted); padding: 12px 8px; }
 .flash.viewing { background: var(--card); border: 1px solid var(--primary); }
 .topbar .user a.account { color: var(--muted); }
 .topbar .user a.account.active { color: var(--primary); }
+
+/* Kunden, Material, Auftragsart */
+.badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    vertical-align: middle;
+}
+.job-filter { margin-bottom: 12px; }
+.job-filter input[type=month] {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--input-bg); color: var(--text); font: inherit;
+}
+.reset-filter { align-self: center; font-size: 13px; }
+.job-group { font-size: 15px; margin: 10px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.job-row-main select { width: 100%; }
+.breadcrumb { margin: 0 0 12px; font-size: 14px; }
+.customer-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.customer-form textarea { width: 100%; font-family: inherit; }
+.customer-form .form-actions { grid-column: 1 / -1; }
+.form-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.customer-info { display: flex; flex-wrap: wrap; gap: 12px 32px; font-size: 14px; }
+.month-head { align-items: center; }
+.month-head a { font-size: 14px; }
+.pdf-form { justify-content: center; }
+.pdf-form label.checkbox, .inline-form label.checkbox { align-self: center; }
+.type-sums { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; margin: 0 0 8px; }
+.customer-jobs .num, .materials .num, .customers .num, .assign .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.customer-jobs tr.is-recorded, .materials tr.is-recorded, .customers tr.is-recorded { opacity: 0.6; }
+.material-form { margin-bottom: 12px; }
+.material-form .grow { flex: 1 1 180px; }
+.material-form .grow input { width: 100%; }
+input.qty { width: 80px; }
+input.unit { width: 80px; }
+.material-edit summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.material-edit[open] { white-space: normal; }
+.material-edit .inline-form { margin: 8px 0; }
+@media (max-width: 600px) {
+    .customer-form { grid-template-columns: 1fr; }
+}

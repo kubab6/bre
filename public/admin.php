@@ -247,15 +247,16 @@ renderHeader('Verwaltung', 'admin');
         </label>
         <label>Von<input type="date" name="from"></label>
         <label>Bis<input type="date" name="to"></label>
-        <label>Eingetragen
+        <label>Abgerechnet
             <select name="recorded">
                 <option value="all">Alle (nur Aufträge)</option>
                 <option value="open">Nur offen</option>
-                <option value="done">Nur eingetragen</option>
+                <option value="done">Nur abgerechnet</option>
             </select>
         </label>
         <button type="submit" class="primary">Exportieren</button>
     </form>
+    <p class="hint">Den monatlichen PDF-Export je Kunde findest du unter <a href="/customers.php">Kunden</a>.</p>
 </section>
 <?php
 renderFooter();
