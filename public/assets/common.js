@@ -74,5 +74,42 @@ window.ZE = (function () {
         return v.replace('T', ' ');
     }
 
-    return { formatDuration, formatShort, parseServerLocal, postForm, startTicker, showError, clearError, localInputToServer };
+    // "Heute"-Knopf neben Datumsfeldern mit data-today: setzt das heutige
+    // Datum; bei Datum+Uhrzeit bleibt eine vorhandene Uhrzeit erhalten.
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function addTodayButtons(root) {
+        (root || document).querySelectorAll('input[data-today]').forEach((input) => {
+            if (input.dataset.todayReady) return;
+            input.dataset.todayReady = '1';
+            const wrap = document.createElement('span');
+            wrap.className = 'with-today';
+            input.parentNode.insertBefore(wrap, input);
+            wrap.appendChild(input);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-today';
+            btn.textContent = 'Heute';
+            btn.title = 'Heutiges Datum einsetzen';
+            btn.addEventListener('click', () => {
+                const d = new Date();
+                const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                if (input.type === 'datetime-local') {
+                    const time = input.value.length >= 16 ? input.value.slice(11, 16) : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    input.value = `${today}T${time}`;
+                } else {
+                    input.value = today;
+                }
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.focus();
+            });
+            wrap.appendChild(btn);
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => addTodayButtons());
+    } else {
+        addTodayButtons();
+    }
+
+    return { addTodayButtons, formatDuration, formatShort, parseServerLocal, postForm, startTicker, showError, clearError, localInputToServer };
 })();

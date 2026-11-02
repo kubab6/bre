@@ -3,17 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/customers.php';
-require_once __DIR__ . '/../includes/audit.php';
+require_once __DIR__ . '/../includes/materials.php';
 
 $me = requireLogin();
 $isMgr = isManager($me);
-
-/** Nach einer Aktion mit Meldung zurück auf die Seite (Post/Redirect/Get). */
-function backTo(string $url, ?string $msg, ?string $err = null): void {
-    $_SESSION['flash'] = ['msg' => $msg, 'err' => $err];
-    header('Location: ' . $url);
-    exit;
-}
 
 /** Kundendaten aus dem Formular; null + Fehlertext bei ungültiger Eingabe. */
 function customerFromPost(?string &$err): ?array {
@@ -33,43 +26,14 @@ function customerFromPost(?string &$err): ?array {
     return $data;
 }
 
-/** Material des Formulars prüfen; null + Fehlertext bei ungültiger Eingabe. */
-function materialFromPost(?string &$err): ?array {
-    $date = postStr('used_on');
-    $qty = parseQty(postStr('quantity', '1'));
-    $data = [
-        'used_on' => $date,
-        'description' => postStr('description'),
-        'quantity' => $qty,
-        'unit' => postStr('unit', 'Stk'),
-        'note' => postStr('note'),
-    ];
-    $dt = DateTime::createFromFormat('Y-m-d', $date);
-    if (!$dt || $dt->format('Y-m-d') !== $date) { $err = 'Ungültiges Datum.'; return null; }
-    if ($data['description'] === '' || mb_strlen($data['description']) > 300) { $err = 'Materialbezeichnung erforderlich (max. 300 Zeichen).'; return null; }
-    if ($qty === null) { $err = 'Ungültige Menge.'; return null; }
-    if (mb_strlen($data['unit']) > 20 || mb_strlen($data['note']) > 500) { $err = 'Einheit oder Notiz zu lang.'; return null; }
-    return $data;
-}
-
-/** Material laden, wenn $me es bearbeiten darf (eigenes oder Manager). */
-function editableMaterial(array $me, int $id): ?array {
-    $stmt = db()->prepare('SELECT * FROM materials WHERE id = ?');
-    $stmt->execute([$id]);
-    $m = $stmt->fetch();
-    if (!$m) return null;
-    return (isManager($me) || (int)$m['user_id'] === (int)$me['id']) ? $m : null;
-}
-
 // ---------------------------------------------------------------- Aktionen
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
     $action = postStr('action');
-    $back = (string)($_POST['back'] ?? '/customers.php');
-    if (!preg_match('#^/customers\.php(\?[\w=&%.-]*)?$#', $back)) $back = '/customers.php';
+    $back = backUrl('/customers.php');
     $err = null;
 
-    $managerOnly = ['create_customer', 'update_customer', 'set_customer_active', 'delete_customer', 'assign_jobs'];
+    $managerOnly = ['create_customer', 'update_customer', 'set_customer_active', 'delete_customer', 'merge_customer', 'assign_jobs'];
     if (in_array($action, $managerOnly, true) && !$isMgr) {
         backTo($back, null, 'Nur Manager und Admins dürfen Kunden verwalten.');
     }
@@ -107,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         backTo($back, $count . ' Aufträge „' . $jobName . '“ zugeordnet.');
     }
 
-    if (in_array($action, ['update_customer', 'set_customer_active', 'delete_customer'], true)) {
+    if (in_array($action, ['update_customer', 'set_customer_active', 'delete_customer', 'merge_customer'], true)) {
         $customer = customerById(postInt('customer_id'));
         if (!$customer) backTo($back, null, 'Kunde nicht gefunden.');
         $cid = (int)$customer['id'];
@@ -133,48 +97,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare('DELETE FROM customers WHERE id = ?')->execute([$cid]);
             backTo('/customers.php', 'Kunde gelöscht.');
         }
-    }
-
-    if ($action === 'create_material') {
-        $customer = customerById(postInt('customer_id'));
-        if (!$customer) backTo($back, null, 'Kunde nicht gefunden.');
-        $data = materialFromPost($err);
-        if (!$data) backTo($back, null, $err);
-        db()->prepare('INSERT INTO materials (customer_id, user_id, used_on, description, quantity, unit, note) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            ->execute([(int)$customer['id'], (int)$me['id'], ...array_values($data)]);
-        $id = (int)db()->lastInsertId();
-        auditLog((int)$me['id'], 'material', $id, 'create', null, fetchEntity('material', $id));
-        backTo($back, 'Material eingetragen.');
-    }
-
-    if (in_array($action, ['update_material', 'set_material_recorded', 'delete_material'], true)) {
-        $m = editableMaterial($me, postInt('material_id'));
-        if (!$m) backTo($back, null, 'Material nicht gefunden.');
-        $mid = (int)$m['id'];
-        $before = fetchEntity('material', $mid);
-        if ($action === 'update_material') {
-            $data = materialFromPost($err);
-            if (!$data) backTo($back, null, $err);
-            db()->prepare('UPDATE materials SET used_on = ?, description = ?, quantity = ?, unit = ?, note = ? WHERE id = ?')
-                ->execute([...array_values($data), $mid]);
-            auditLog((int)$me['id'], 'material', $mid, 'update', $before, fetchEntity('material', $mid));
-            backTo($back, 'Material gespeichert.');
+        if ($action === 'merge_customer') {
+            // Doppelt angelegten Kunden in einen anderen überführen.
+            $target = customerById(postInt('target_id'));
+            if (!$target || (int)$target['id'] === $cid) backTo($back, null, 'Bitte einen anderen Kunden als Ziel wählen.');
+            $tid = (int)$target['id'];
+            foreach (['job_entry' => 'job_entries', 'material' => 'materials'] as $type => $table) {
+                $ids = db()->prepare("SELECT id FROM $table WHERE customer_id = ?");
+                $ids->execute([$cid]);
+                foreach ($ids->fetchAll(PDO::FETCH_COLUMN) as $eid) {
+                    $before = fetchEntity($type, (int)$eid);
+                    db()->prepare("UPDATE $table SET customer_id = ? WHERE id = ?")->execute([$tid, $eid]);
+                    auditLog((int)$me['id'], $type, (int)$eid, 'update', $before, fetchEntity($type, (int)$eid));
+                }
+            }
+            db()->prepare('DELETE FROM customers WHERE id = ?')->execute([$cid]);
+            backTo('/customers.php?id=' . $tid, '„' . $customer['name'] . '“ wurde mit „' . $target['name'] . '“ zusammengeführt.');
         }
-        if ($action === 'set_material_recorded') {
-            db()->prepare('UPDATE materials SET is_recorded = ? WHERE id = ?')->execute([postInt('value') === 1 ? 1 : 0, $mid]);
-            auditLog((int)$me['id'], 'material', $mid, 'update', $before, fetchEntity('material', $mid));
-            backTo($back, null);
-        }
-        db()->prepare('DELETE FROM materials WHERE id = ?')->execute([$mid]);
-        auditLog((int)$me['id'], 'material', $mid, 'delete', $before, null);
-        backTo($back, 'Material gelöscht.');
     }
 
+    handleMaterialPost($me, $action, $back);
     backTo($back, null, 'Unbekannte Aktion.');
 }
-
-$flash = $_SESSION['flash'] ?? null;
-unset($_SESSION['flash']);
 
 $customer = isset($_GET['id']) ? customerById((int)$_GET['id']) : null;
 [$month, $monthFrom, $monthTo] = monthRange($_GET['month'] ?? null);
@@ -182,8 +126,7 @@ $monthStart = $monthFrom . ' 00:00:00';
 $monthEnd = $monthTo . ' 23:59:59';
 
 renderHeader($customer ? $customer['name'] : 'Kunden', 'customers');
-if ($flash && $flash['msg']): ?><p class="flash success"><?= h($flash['msg']) ?></p><?php endif;
-if ($flash && $flash['err']): ?><p class="flash error"><?= h($flash['err']) ?></p><?php endif;
+echo renderFlash();
 
 if ($customer):
     // ------------------------------------------------------------ Detailseite
@@ -195,7 +138,7 @@ if ($customer):
     // Manager sehen alle Aufträge und alles Material des Kunden, Benutzer nur ihre eigenen.
     $ownOnly = $isMgr ? '' : ' AND e.user_id = ' . (int)$me['id'];
     $jobs = db()->prepare(
-        "SELECT e.*, u.username FROM job_entries e JOIN users u ON u.id = e.user_id
+        "SELECT e.*, COALESCE(NULLIF(u.name, ''), u.username) AS user_display FROM job_entries e JOIN users u ON u.id = e.user_id
          WHERE e.customer_id = ? AND e.start_time >= ? AND e.start_time <= ? $ownOnly
          ORDER BY e.start_time"
     );
@@ -204,7 +147,7 @@ if ($customer):
 
     $ownOnlyM = $isMgr ? '' : ' AND m.user_id = ' . (int)$me['id'];
     $materials = db()->prepare(
-        "SELECT m.*, u.username FROM materials m LEFT JOIN users u ON u.id = m.user_id
+        "SELECT m.*, COALESCE(NULLIF(u.name, ''), u.username) AS user_display FROM materials m LEFT JOIN users u ON u.id = m.user_id
          WHERE m.customer_id = ? AND m.used_on >= ? AND m.used_on <= ? $ownOnlyM
          ORDER BY m.used_on, m.id"
     );
@@ -270,6 +213,21 @@ if ($customer):
             </form>
         </div>
         <p class="hint">Löschen geht nur, solange der Kunde keine Aufträge und kein Material hat.</p>
+        <form method="post" class="inline-form merge-form" onsubmit="return confirm('Alle Aufträge und das Material in den gewählten Kunden verschieben und diesen Kunden löschen?')">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="merge_customer">
+            <input type="hidden" name="customer_id" value="<?= $cid ?>">
+            <input type="hidden" name="back" value="<?= h($self) ?>">
+            <label>Doppelt angelegt? Zusammenführen mit
+                <select name="target_id" required>
+                    <option value="">– Kunde wählen –</option>
+                    <?php foreach (customerList(true) as $c): if ((int)$c['id'] === $cid) continue; ?>
+                        <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <button type="submit">Zusammenführen</button>
+        </form>
     </details>
     <?php endif; ?>
 </section>
@@ -280,13 +238,16 @@ if ($customer):
         <h2><?= h(monthLabel($month)) ?></h2>
         <a href="/customers.php?id=<?= $cid ?>&month=<?= h($next) ?>"><?= h(monthLabel($next)) ?> ›</a>
     </div>
-    <?php if ($isMgr): ?>
-    <form method="get" action="/customer_pdf.php" class="inline-form pdf-form" target="_blank">
+    <form method="get" action="/customers.php" class="inline-form month-pick">
         <input type="hidden" name="id" value="<?= $cid ?>">
-        <input type="hidden" name="month" value="<?= h($month) ?>">
-        <label class="checkbox"><input type="checkbox" name="open" value="1"> Nur nicht abgerechnete</label>
-        <button type="submit" class="primary">PDF für <?= h(monthLabel($month)) ?></button>
+        <label>Monat<select name="month" onchange="this.form.submit()"><?= monthOptions($month) ?></select></label>
+        <noscript><button type="submit">Anzeigen</button></noscript>
     </form>
+    <?php if ($isMgr): ?>
+    <div class="pdf-buttons">
+        <a class="btn primary" href="/customer_pdf.php?id=<?= $cid ?>&month=<?= h($month) ?>&variant=customer" target="_blank">PDF für Kunden</a>
+        <a class="btn" href="/customer_pdf.php?id=<?= $cid ?>&month=<?= h($month) ?>&variant=internal" target="_blank">PDF intern (mit EK)</a>
+    </div>
     <?php endif; ?>
 </section>
 
@@ -308,7 +269,7 @@ if ($customer):
         <?php foreach ($jobs as $j): ?>
             <tr class="<?= $j['is_recorded'] ? 'is-recorded' : '' ?>">
                 <td data-label="Datum"><?= h(date('d.m.Y', strtotime($j['start_time']))) ?></td>
-                <?php if ($isMgr): ?><td data-label="Mitarbeiter"><?= h($j['username']) ?></td><?php endif; ?>
+                <?php if ($isMgr): ?><td data-label="Mitarbeiter"><?= h($j['user_display']) ?></td><?php endif; ?>
                 <td data-label="Art"><?= h(jobTypeLabel($j['job_type'])) ?></td>
                 <td data-label="Auftrag"><?= h($j['job_name']) ?><?php if ($j['note'] !== ''): ?><br><span class="muted"><?= h($j['note']) ?></span><?php endif; ?></td>
                 <td data-label="Zeit"><?= h(substr($j['start_time'], 11, 5)) ?>–<?= $j['end_time'] ? h(substr($j['end_time'], 11, 5)) : '…' ?></td>
@@ -330,68 +291,15 @@ if ($customer):
         <input type="hidden" name="action" value="create_material">
         <input type="hidden" name="customer_id" value="<?= $cid ?>">
         <input type="hidden" name="back" value="<?= h($self) ?>">
-        <label>Datum<input type="date" name="used_on" required value="<?= h($defaultDate) ?>"></label>
-        <label class="grow">Material<input type="text" name="description" required maxlength="300" placeholder="z.B. Netzwerkkabel Cat6 5 m"></label>
-        <label>Menge<input type="text" name="quantity" required value="1" inputmode="decimal" class="qty"></label>
-        <label>Einheit<input type="text" name="unit" value="Stk" maxlength="20" class="unit" list="units"></label>
-        <label class="grow">Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
+        <?= materialFields(null, $defaultDate) ?>
         <button type="submit" class="primary">Eintragen</button>
     </form>
-    <datalist id="units"><option value="Stk"><option value="m"><option value="Std"><option value="Pkg"><option value="Set"><option value="l"></datalist>
+    <?= unitDatalist() ?>
 
     <?php if (!$materials): ?>
         <p class="muted">Kein Material in diesem Monat.</p>
     <?php else: ?>
-    <div class="table-wrap">
-    <table class="materials">
-        <thead><tr><th>Datum</th><th>Material</th><th class="num">Menge</th><?php if ($isMgr): ?><th>Von</th><?php endif; ?><th>Abgerechnet</th><th></th></tr></thead>
-        <tbody>
-        <?php foreach ($materials as $m): ?>
-            <tr class="<?= $m['is_recorded'] ? 'is-recorded' : '' ?>">
-                <td data-label="Datum"><?= h(date('d.m.Y', strtotime($m['used_on']))) ?></td>
-                <td data-label="Material"><?= h($m['description']) ?><?php if ($m['note'] !== ''): ?><br><span class="muted"><?= h($m['note']) ?></span><?php endif; ?></td>
-                <td data-label="Menge" class="num"><?= h(fmtQty((float)$m['quantity'])) ?> <?= h($m['unit']) ?></td>
-                <?php if ($isMgr): ?><td data-label="Von"><?= h($m['username'] ?? '–') ?></td><?php endif; ?>
-                <td data-label="Abgerechnet">
-                    <form method="post" class="inline">
-                        <?= csrfField() ?>
-                        <input type="hidden" name="action" value="set_material_recorded">
-                        <input type="hidden" name="material_id" value="<?= (int)$m['id'] ?>">
-                        <input type="hidden" name="back" value="<?= h($self) ?>">
-                        <input type="hidden" name="value" value="0">
-                        <label class="checkbox"><input type="checkbox" name="value" value="1" <?= $m['is_recorded'] ? 'checked' : '' ?> onchange="this.form.submit()"> Abgerechnet</label>
-                        <noscript><button type="submit">Setzen</button></noscript>
-                    </form>
-                </td>
-                <td class="row-actions">
-                    <details class="material-edit">
-                        <summary>Bearbeiten</summary>
-                        <form method="post" class="inline-form">
-                            <?= csrfField() ?>
-                            <input type="hidden" name="action" value="update_material">
-                            <input type="hidden" name="material_id" value="<?= (int)$m['id'] ?>">
-                            <input type="hidden" name="back" value="<?= h($self) ?>">
-                            <label>Datum<input type="date" name="used_on" required value="<?= h($m['used_on']) ?>"></label>
-                            <label>Material<input type="text" name="description" required maxlength="300" value="<?= h($m['description']) ?>"></label>
-                            <label>Menge<input type="text" name="quantity" required value="<?= h(fmtQty((float)$m['quantity'])) ?>" class="qty"></label>
-                            <label>Einheit<input type="text" name="unit" maxlength="20" value="<?= h($m['unit']) ?>" class="unit" list="units"></label>
-                            <label>Notiz<input type="text" name="note" maxlength="500" value="<?= h($m['note']) ?>"></label>
-                            <button type="submit" class="primary">Speichern</button>
-                        </form>
-                        <form method="post" class="inline" onsubmit="return confirm('Material löschen?')">
-                            <?= csrfField() ?>
-                            <input type="hidden" name="action" value="delete_material">
-                            <input type="hidden" name="material_id" value="<?= (int)$m['id'] ?>">
-                            <input type="hidden" name="back" value="<?= h($self) ?>">
-                            <button type="submit" class="btn-delete">Löschen</button>
-                        </form>
-                    </details>
-                </td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
+        <?= renderMaterialTable($materials, '/customers.php', $self, $isMgr, false) ?>
     <?php endif; ?>
 </section>
 <?php
@@ -468,11 +376,16 @@ else:
     <h2>PDF-Export je Kunde</h2>
     <form method="get" action="/customer_pdf.php" class="inline-form" target="_blank">
         <label>Kunde<select name="id" required><?= customerOptions(customerList(true), null, '– Kunde wählen –') ?></select></label>
-        <label>Monat<input type="month" name="month" required value="<?= h(date('Y-m')) ?>"></label>
-        <label class="checkbox"><input type="checkbox" name="open" value="1"> Nur nicht abgerechnete</label>
+        <label>Monat<select name="month" required><?= monthOptions(date('Y-m')) ?></select></label>
+        <label>Variante
+            <select name="variant">
+                <option value="customer">Für Kunden</option>
+                <option value="internal">Intern (mit EK-Preisen)</option>
+            </select>
+        </label>
         <button type="submit" class="primary">PDF erstellen</button>
     </form>
-    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) und das Material des Kunden im gewählten Monat.</p>
+    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) und das Material des Kunden im gewählten Monat. Die interne Variante zeigt zusätzlich die Einkaufspreise.</p>
 </section>
 <?php endif; ?>
 

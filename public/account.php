@@ -8,7 +8,17 @@ $user = requireLogin();
 $msg = null;
 $err = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && postStr('action') === 'set_name') {
+    csrfCheck();
+    $name = postStr('name');
+    if (mb_strlen($name) > 100) {
+        $err = 'Name zu lang (max. 100 Zeichen).';
+    } else {
+        db()->prepare('UPDATE users SET name = ? WHERE id = ?')->execute([$name, $user['id']]);
+        $user['name'] = $name;
+        $msg = 'Name gespeichert.';
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
     $current = (string)postParam('current_password', '');
     $new = (string)postParam('new_password', '');
@@ -40,6 +50,17 @@ renderHeader('Mein Konto', 'account');
 <section class="card">
     <h2>Mein Konto</h2>
     <p class="muted">Angemeldet als <strong><?= h($user['username']) ?></strong> · Rolle: <?= h(roleLabel($user['role'])) ?></p>
+</section>
+
+<section class="card">
+    <h2>Name</h2>
+    <form method="post" class="inline-form">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="set_name">
+        <label>Vor- und Nachname<input type="text" name="name" maxlength="100" value="<?= h($user['name'] ?? '') ?>" placeholder="z.B. Max Mustermann"></label>
+        <button type="submit" class="primary">Speichern</button>
+    </form>
+    <p class="hint">Der Name erscheint z.B. auf den PDF-Exporten. Ohne Namen wird der Benutzername verwendet.</p>
 </section>
 
 <section class="card">

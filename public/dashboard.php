@@ -7,13 +7,21 @@ $me = requireLogin();
 $user = viewedUser($me);
 $own = (int)$user['id'] === (int)$me['id'];
 
-$active = db()->prepare('SELECT id, start_time FROM work_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
+$active = db()->prepare('SELECT id, start_time, work_type FROM work_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
 $active->execute([$user['id']]);
 $activeSession = $active->fetch();
 
+// Pause: letzter Abschnitt heute wurde mit "Pause" beendet und noch nicht fortgesetzt.
+$pause = null;
+if (!$activeSession) {
+    $p = db()->prepare('SELECT end_time, work_type FROM work_sessions WHERE user_id = ? AND pause_after = 1 AND end_time >= ? ORDER BY end_time DESC LIMIT 1');
+    $p->execute([$user['id'], date('Y-m-d 00:00:00')]);
+    $pause = $p->fetch() ?: null;
+}
+
 $since = (new DateTime('-6 days'))->setTime(0, 0)->format('Y-m-d H:i:s');
 $rowsStmt = db()->prepare(
-    'SELECT id, start_time, end_time FROM work_sessions
+    'SELECT id, start_time, end_time, work_type FROM work_sessions
      WHERE user_id = ? AND start_time >= ?
      ORDER BY start_time DESC'
 );
@@ -29,6 +37,16 @@ foreach ($rows as $r) {
     $byDay[$day]['total'] = ($byDay[$day]['total'] ?? 0) + $secs;
     $weekTotal += $secs;
 }
+// Pausen = Lücken zwischen den Abschnitten eines Tages.
+foreach ($byDay as $day => $info) {
+    $sorted = array_reverse($info['rows']);
+    $gap = 0;
+    for ($i = 1; $i < count($sorted); $i++) {
+        $prevEnd = $sorted[$i - 1]['end_time'];
+        if ($prevEnd) $gap += max(0, strtotime($sorted[$i]['start_time']) - strtotime($prevEnd));
+    }
+    $byDay[$day]['pause'] = $gap;
+}
 
 $days = [];
 for ($i = 0; $i < 7; $i++) {
@@ -42,22 +60,36 @@ renderHeader('Arbeitszeit', 'dashboard');
 <section class="card stopwatch">
     <?php if ($own): ?>
     <h2>Stoppuhr</h2>
-    <div class="clock" id="clock"
-         data-active="<?= $activeSession ? '1' : '0' ?>"
-         data-start="<?= $activeSession ? h($activeSession['start_time']) : '' ?>">
-        <span class="time" id="clock-time"><?= $activeSession ? '00:00:00' : '–' ?></span>
+    <div class="clock<?= $pause ? ' is-paused' : '' ?>" id="clock"
+         data-active="<?= ($activeSession || $pause) ? '1' : '0' ?>"
+         data-start="<?= $activeSession ? h($activeSession['start_time']) : ($pause ? h($pause['end_time']) : '') ?>">
+        <span class="time" id="clock-time"><?= ($activeSession || $pause) ? '00:00:00' : '–' ?></span>
         <span class="status" id="clock-status">
-            <?= $activeSession ? 'Eingestochen seit ' . h(substr($activeSession['start_time'], 11, 5)) : 'Ausgestochen' ?>
+            <?php if ($activeSession): ?>
+                Eingestochen seit <?= h(substr($activeSession['start_time'], 11, 5)) ?><?= $activeSession['work_type'] !== '' ? ' · ' . h(workTypeLabel($activeSession['work_type'])) : '' ?>
+            <?php elseif ($pause): ?>
+                Pause seit <?= h(substr($pause['end_time'], 11, 5)) ?>
+            <?php else: ?>
+                Ausgestochen
+            <?php endif; ?>
         </span>
     </div>
     <div class="actions">
-        <button id="btn-clock-in" type="button" class="primary" <?= $activeSession ? 'hidden' : '' ?>>Einstechen</button>
-        <button id="btn-clock-out" type="button" class="danger" <?= $activeSession ? '' : 'hidden' ?>>Ausstechen</button>
+        <?php if ($activeSession): ?>
+            <button id="btn-clock-pause" type="button">Pause</button>
+            <button id="btn-clock-out" type="button" class="danger">Ausstechen</button>
+        <?php elseif ($pause): ?>
+            <button id="btn-clock-in" type="button" class="primary">Pause beenden</button>
+            <button id="btn-clock-out" type="button" class="danger">Ausstechen</button>
+        <?php else: ?>
+            <select id="clock-work-type" aria-label="Art"><?= workTypeOptions(null) ?></select>
+            <button id="btn-clock-in" type="button" class="primary">Einstechen</button>
+        <?php endif; ?>
     </div>
     <p class="hint" id="clock-error" hidden></p>
     <?php else: ?>
-    <h2>Arbeitszeit von <?= h($user['username']) ?></h2>
-    <p class="muted"><?= $activeSession ? 'Eingestochen seit ' . h(substr($activeSession['start_time'], 11, 5)) : 'Ausgestochen' ?></p>
+    <h2>Arbeitszeit von <?= h(displayName($user)) ?></h2>
+    <p class="muted"><?= $activeSession ? 'Eingestochen seit ' . h(substr($activeSession['start_time'], 11, 5)) : ($pause ? 'Pause seit ' . h(substr($pause['end_time'], 11, 5)) : 'Ausgestochen') ?></p>
     <?php endif; ?>
 
     <details class="manual-add"<?= $own ? '' : ' open' ?>>
@@ -65,8 +97,9 @@ renderHeader('Arbeitszeit', 'dashboard');
         <form id="work-create-form" class="inline-form">
             <?= csrfField() ?>
             <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
-            <label>Start<input type="datetime-local" name="start_time" required></label>
-            <label>Ende<input type="datetime-local" name="end_time" required></label>
+            <label>Art<select name="work_type"><?= workTypeOptions(null) ?></select></label>
+            <label>Start<input type="datetime-local" name="start_time" required data-today></label>
+            <label>Ende<input type="datetime-local" name="end_time" required data-today></label>
             <button type="submit" class="primary">Speichern</button>
         </form>
         <p class="hint" id="work-create-error" hidden></p>
@@ -89,12 +122,13 @@ renderHeader('Arbeitszeit', 'dashboard');
             <div class="day-group">
                 <div class="day-header">
                     <strong><?= h($label) ?></strong>
-                    <span class="muted"><?= h(fmtDurationShort($dayTotal)) ?></span>
+                    <span class="muted"><?php if (!empty($byDay[$d]['pause'])): ?>Pause <?= h(fmtDurationShort($byDay[$d]['pause'])) ?> · <?php endif; ?><?= h(fmtDurationShort($dayTotal)) ?></span>
                 </div>
                 <?php if (!$dayRows): ?>
                     <p class="empty muted">Keine Einträge</p>
                 <?php else: foreach ($dayRows as $r): ?>
                     <div class="session-row" data-id="<?= (int)$r['id'] ?>">
+                        <label>Art<select class="edit-type"><?= workTypeOptions($r['work_type']) ?></select></label>
                         <label>Start<input type="datetime-local" class="edit-start" value="<?= h(toLocalInputValue($r['start_time'])) ?>"></label>
                         <label>Ende<input type="datetime-local" class="edit-end" value="<?= h(toLocalInputValue($r['end_time'])) ?>" <?= $r['end_time'] === null ? 'placeholder="läuft…"' : '' ?>></label>
                         <span class="dur" title="Dauer">

@@ -26,17 +26,17 @@ if ($type === 'jobs') {
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 if ($type === 'jobs') {
-    $sql = "SELECT u.username, c.name AS customer_name, e.job_type, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded
+    $sql = "SELECT COALESCE(NULLIF(u.name, ''), u.username) AS username, c.name AS customer_name, e.job_type, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded
             FROM job_entries e JOIN users u ON u.id = e.user_id
             LEFT JOIN customers c ON c.id = e.customer_id
             $whereSql ORDER BY e.start_time";
-    $headers = ['Benutzer','Kunde','Art','Auftrag','Start','Ende','Dauer (Min)','Notiz','Abgerechnet'];
+    $headers = ['Mitarbeiter','Kunde','Art','Auftrag','Start','Ende','Dauer (Min)','Notiz','Abgerechnet'];
     $filename = 'auftragszeiten_' . date('Y-m-d') . '.csv';
 } else {
-    $sql = "SELECT u.username, e.start_time, e.end_time
+    $sql = "SELECT COALESCE(NULLIF(u.name, ''), u.username) AS username, e.work_type, e.start_time, e.end_time
             FROM work_sessions e JOIN users u ON u.id = e.user_id
             $whereSql ORDER BY e.start_time";
-    $headers = ['Benutzer','Start','Ende','Dauer (Min)'];
+    $headers = ['Mitarbeiter','Art','Start','Ende','Dauer (Min)'];
     $filename = 'arbeitszeiten_' . date('Y-m-d') . '.csv';
 }
 
@@ -58,7 +58,7 @@ while ($r = $stmt->fetch()) {
             $minutes, $r['note'], ((int)$r['is_recorded'] === 1 ? 'Ja' : 'Nein'),
         ], ';');
     } else {
-        fputcsv($out, [$r['username'], $r['start_time'], $r['end_time'] ?? '', $minutes], ';');
+        fputcsv($out, [$r['username'], workTypeLabel($r['work_type']), $r['start_time'], $r['end_time'] ?? '', $minutes], ';');
     }
 }
 fclose($out);

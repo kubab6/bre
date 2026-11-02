@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function db(): PDO {
     static $pdo = null;
@@ -15,8 +15,19 @@ function db(): PDO {
         $pdo->exec('PRAGMA foreign_keys = ON');
         if ($isNew) {
             initSchema($pdo);
+        } elseif ((int)$pdo->query('PRAGMA user_version')->fetchColumn() < SCHEMA_VERSION) {
+            // Erst sichern, dann alles in einer Transaktion umstellen:
+            // Schlägt etwas fehl, bleibt die Datenbank wie sie war.
+            backupBeforeMigration($pdo);
+            $pdo->beginTransaction();
+            try {
+                migrate($pdo);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
         }
-        migrate($pdo);
     }
     return $pdo;
 }
@@ -29,6 +40,7 @@ function initSchema(PDO $pdo): void {
             password_hash TEXT NOT NULL,
             is_admin INTEGER NOT NULL DEFAULT 0,
             role TEXT NOT NULL DEFAULT 'user',
+            name TEXT NOT NULL DEFAULT '',
             daily_target_minutes INTEGER NOT NULL DEFAULT 480,
             balance_start_date TEXT NOT NULL DEFAULT (DATE('now')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -38,6 +50,8 @@ function initSchema(PDO $pdo): void {
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             start_time TEXT NOT NULL,
             end_time TEXT,
+            work_type TEXT NOT NULL DEFAULT '',
+            pause_after INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX idx_work_user_start ON work_sessions(user_id, start_time);
@@ -138,6 +152,40 @@ function migrate(PDO $pdo): void {
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_job_customer_start ON job_entries(customer_id, start_time)');
         $pdo->exec('PRAGMA user_version = 5');
     }
+
+    if ($version < 6) {
+        // Anzeigename, Art und Pause bei Arbeitszeit, Einkaufspreis bei Material.
+        // Nur neue Spalten, bestehende Daten bleiben unverändert.
+        addColumnIfMissing($pdo, 'users', 'name', "TEXT NOT NULL DEFAULT ''");
+        addColumnIfMissing($pdo, 'work_sessions', 'work_type', "TEXT NOT NULL DEFAULT ''");
+        addColumnIfMissing($pdo, 'work_sessions', 'pause_after', 'INTEGER NOT NULL DEFAULT 0');
+        addColumnIfMissing($pdo, 'materials', 'purchase_price', 'REAL');
+        $pdo->exec('PRAGMA user_version = 6');
+    }
+}
+
+function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void {
+    $cols = array_column($pdo->query("PRAGMA table_info($table)")->fetchAll(), 'name');
+    if (!in_array($column, $cols, true)) {
+        $pdo->exec("ALTER TABLE $table ADD COLUMN $column $definition");
+    }
+}
+
+/**
+ * Vor jeder Schema-Umstellung eine Kopie der Datenbank in data/backups/
+ * ablegen (z.B. app-v5-2026-11-02_120000.sqlite).
+ */
+function backupBeforeMigration(PDO $pdo): void {
+    $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
+    if ($version >= SCHEMA_VERSION) return;
+    $dir = dirname(DB_PATH) . '/backups';
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
+        throw new RuntimeException('Backup-Ordner data/backups konnte nicht angelegt werden; Datenbank wird nicht umgestellt.');
+    }
+    $target = sprintf('%s/app-v%d-%s.sqlite', $dir, $version, date('Y-m-d_His'));
+    if (!@copy(DB_PATH, $target)) {
+        throw new RuntimeException('Backup der Datenbank fehlgeschlagen; Datenbank wird nicht umgestellt.');
+    }
 }
 
 function createV5Tables(PDO $pdo): void {
@@ -160,6 +208,7 @@ function createV5Tables(PDO $pdo): void {
             description TEXT NOT NULL,
             quantity REAL NOT NULL DEFAULT 1,
             unit TEXT NOT NULL DEFAULT 'Stk',
+            purchase_price REAL,
             note TEXT NOT NULL DEFAULT '',
             is_recorded INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

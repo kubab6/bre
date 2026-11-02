@@ -4,10 +4,10 @@
     const csrf = list.dataset.csrf;
     const errEl = document.getElementById('job-error');
 
-    const clock = document.getElementById('job-clock');
-    if (clock && clock.dataset.active === '1') {
-        Z.startTicker(document.getElementById('job-time'), Z.parseServerLocal(clock.dataset.start));
-    }
+    // Eine Stoppuhr je laufendem Auftrag.
+    document.querySelectorAll('.running-job[data-start]').forEach((el) => {
+        Z.startTicker(el.querySelector('.job-time'), Z.parseServerLocal(el.dataset.start));
+    });
 
     const startForm = document.getElementById('job-start-form');
     if (startForm) {
@@ -21,7 +21,7 @@
                     csrf: fd.get('csrf'),
                     job_name: fd.get('job_name'),
                     note: fd.get('note'),
-                    customer_id: fd.get('customer_id'),
+                    customer_name: fd.get('customer_name'),
                     job_type: fd.get('job_type'),
                 });
                 window.location.reload();
@@ -43,7 +43,7 @@
                     user_id: fd.get('user_id'),
                     job_name: fd.get('job_name'),
                     note: fd.get('note'),
-                    customer_id: fd.get('customer_id'),
+                    customer_name: fd.get('customer_name'),
                     job_type: fd.get('job_type'),
                     start_time: Z.localInputToServer(fd.get('start_time')),
                     end_time: Z.localInputToServer(fd.get('end_time')),
@@ -53,16 +53,16 @@
         });
     }
 
-    const stopBtn = document.getElementById('btn-job-stop');
-    if (stopBtn) {
-        stopBtn.addEventListener('click', async () => {
+    document.querySelectorAll('.btn-job-stop').forEach((btn) => {
+        btn.addEventListener('click', async () => {
             Z.clearError(errEl);
+            btn.disabled = true;
             try {
-                await Z.postForm('/api/job.php', { action: 'stop', csrf });
+                await Z.postForm('/api/job.php', { action: 'stop', csrf, id: btn.dataset.id });
                 window.location.reload();
-            } catch (e) { Z.showError(errEl, e.message); }
+            } catch (e) { Z.showError(errEl, e.message); btn.disabled = false; }
         });
-    }
+    });
 
     list.addEventListener('change', async (ev) => {
         if (!ev.target.classList.contains('edit-recorded')) return;
@@ -93,7 +93,7 @@
                 action: 'update', csrf, id,
                 job_name: row.querySelector('.edit-job').value,
                 note: row.querySelector('.edit-note').value,
-                customer_id: row.querySelector('.edit-customer').value,
+                customer_name: row.querySelector('.edit-customer').value,
                 job_type: row.querySelector('.edit-type').value,
                 start_time: Z.localInputToServer(row.querySelector('.edit-start').value),
                 end_time: Z.localInputToServer(row.querySelector('.edit-end').value),

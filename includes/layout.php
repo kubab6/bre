@@ -79,15 +79,15 @@ function siteFooter(): string {
  */
 function userSwitcher(array $me, array $viewed, string $page): string {
     if (!isManager($me)) return '';
-    $users = db()->query('SELECT id, username FROM users ORDER BY username')->fetchAll();
+    $users = db()->query('SELECT id, username, name FROM users ORDER BY username')->fetchAll();
     $html = '<form method="get" action="' . h($page) . '" class="user-switch"><label>Benutzer anzeigen<select name="user" onchange="this.form.submit()">';
     foreach ($users as $u) {
         $sel = (int)$u['id'] === (int)$viewed['id'] ? ' selected' : '';
-        $html .= '<option value="' . (int)$u['id'] . '"' . $sel . '>' . h($u['username']) . '</option>';
+        $html .= '<option value="' . (int)$u['id'] . '"' . $sel . '>' . h($u['username'] . ($u['name'] !== '' ? ' (' . $u['name'] . ')' : '')) . '</option>';
     }
     $html .= '</select></label><noscript><button type="submit">Anzeigen</button></noscript></form>';
     if ((int)$viewed['id'] !== (int)$me['id']) {
-        $html .= '<p class="flash viewing">Du siehst die Daten von <strong>' . h($viewed['username']) . '</strong>. <a href="' . h($page) . '">Zurück zu meinen Daten</a></p>';
+        $html .= '<p class="flash viewing">Du siehst die Daten von <strong>' . h(displayName($viewed)) . '</strong>. <a href="' . h($page) . '">Zurück zu meinen Daten</a></p>';
     }
     return $html;
 }
@@ -97,8 +97,8 @@ function renderFooter(string $jsFile = ''): void {
 </main>
 <?= siteFooter() ?>
 <script src="/assets/theme.js"></script>
-<?php if ($jsFile): ?>
 <script src="/assets/common.js"></script>
+<?php if ($jsFile): ?>
 <script src="<?= h($jsFile) ?>"></script>
 <?php endif; ?>
 </body>

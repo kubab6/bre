@@ -28,11 +28,17 @@ function canManageUser(array $me, array $target): bool {
     return isManager($me) && ($target['role'] ?? '') !== 'admin';
 }
 
+/** Anzeigename (z.B. für PDF-Exporte); ohne eigenen Namen der Benutzername. */
+function displayName(array $u): string {
+    $name = trim((string)($u['name'] ?? ''));
+    return $name !== '' ? $name : (string)($u['username'] ?? '');
+}
+
 function currentUser(): ?array {
     if (empty($_SESSION['uid'])) return null;
     static $user = null;
     if ($user === null || $user['id'] !== $_SESSION['uid']) {
-        $stmt = db()->prepare('SELECT id, username, role FROM users WHERE id = ?');
+        $stmt = db()->prepare('SELECT id, username, name, role FROM users WHERE id = ?');
         $stmt->execute([$_SESSION['uid']]);
         $user = $stmt->fetch() ?: null;
         if ($user === null) {
@@ -76,7 +82,7 @@ function requireAdmin(): array {
 function viewedUser(array $me): array {
     $id = (int)($_GET['user'] ?? 0);
     if ($id > 0 && $id !== (int)$me['id'] && isManager($me)) {
-        $stmt = db()->prepare('SELECT id, username, role FROM users WHERE id = ?');
+        $stmt = db()->prepare('SELECT id, username, name, role FROM users WHERE id = ?');
         $stmt->execute([$id]);
         $u = $stmt->fetch();
         if ($u) return $u;

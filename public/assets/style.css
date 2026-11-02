@@ -506,3 +506,28 @@ input.unit { width: 80px; }
 @media (max-width: 600px) {
     .customer-form { grid-template-columns: 1fr; }
 }
+
+/* Heute-Knopf, mehrere laufende Aufträge, Pause, PDF-Knöpfe */
+.with-today { display: flex; gap: 4px; align-items: stretch; }
+.with-today input { flex: 1 1 auto; min-width: 0; }
+.btn-today { padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+.running-jobs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.running-job {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+}
+.running-job .time { font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 130px; }
+.running-job .status { flex: 1 1 200px; color: var(--muted); }
+.stopwatch .clock.is-paused .time { color: var(--muted); }
+.actions select { width: auto; }
+a.btn { display: inline-block; text-decoration: none; color: var(--text); }
+a.btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+a.btn.primary:hover { background: var(--primary-hover); }
+.pdf-buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+.month-pick { justify-content: center; }
+.merge-form { margin-top: 12px; }
+.name-form { display: flex; margin-top: 4px; }
+.name-form input { width: 150px; }
+@media (max-width: 600px) {
+    .running-job .time { font-size: 22px; min-width: 0; }
+}

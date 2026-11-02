@@ -13,10 +13,13 @@ csrfCheck();
 $action = postStr('action');
 $now = date('Y-m-d H:i:s');
 
-/** Kunde und Auftragsart aus dem Request; bricht bei unbekanntem Kunden ab. */
+/**
+ * Kunde (eingetippter Name; unbekannte Namen werden als Kunde angelegt)
+ * und Auftragsart aus dem Request.
+ */
 function jobMeta(): array {
-    $customerId = postCustomerId();
-    if ($customerId === false) jsonError('Kunde nicht gefunden.', 404);
+    $customerId = resolveCustomerName(postStr('customer_name'));
+    if ($customerId === false) jsonError('Kundenname zu lang (max. 200 Zeichen).');
     return [$customerId, postJobType()];
 }
 
@@ -26,11 +29,7 @@ if ($action === 'start') {
     if ($name === '' || mb_strlen($name) > 200) jsonError('Auftragsname erforderlich.');
     if (mb_strlen($note) > 500) jsonError('Notiz zu lang.');
 
-    $stmt = db()->prepare('SELECT id FROM job_entries WHERE user_id = ? AND end_time IS NULL');
-    $stmt->execute([$user['id']]);
-    if ($stmt->fetch()) {
-        jsonError('Es läuft bereits ein Auftrag.', 409);
-    }
+    // Mehrere Aufträge dürfen gleichzeitig laufen.
     [$customerId, $jobType] = jobMeta();
     $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, note, customer_id, job_type) VALUES (?, ?, ?, ?, ?, ?)');
     $stmt->execute([$user['id'], $name, $now, $note, $customerId, $jobType]);
@@ -61,7 +60,10 @@ if ($action === 'create') {
 }
 
 if ($action === 'stop') {
-    $stmt = db()->prepare('SELECT id, start_time FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
+    // Bestimmten laufenden Auftrag stoppen (ohne ID: den zuletzt gestarteten).
+    $stopId = postInt('id');
+    $stmt = db()->prepare('SELECT id, start_time FROM job_entries WHERE user_id = ? AND end_time IS NULL'
+        . ($stopId > 0 ? ' AND id = ' . $stopId : '') . ' ORDER BY start_time DESC LIMIT 1');
     $stmt->execute([$user['id']]);
     $row = $stmt->fetch();
     if (!$row) jsonError('Kein laufender Auftrag.', 409);

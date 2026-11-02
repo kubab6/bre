@@ -19,8 +19,9 @@ if ($action === 'create') {
     if (strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
     $targetId = targetUserId($user);
     if ($targetId === null) jsonError('Benutzer nicht gefunden.', 404);
-    $stmt = db()->prepare('INSERT INTO work_sessions (user_id, start_time, end_time) VALUES (?, ?, ?)');
-    $stmt->execute([$targetId, $start, $end]);
+    $type = postStr('work_type');
+    $stmt = db()->prepare('INSERT INTO work_sessions (user_id, start_time, end_time, work_type) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$targetId, $start, $end, isset(WORK_TYPES[$type]) ? $type : '']);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'work_session', $id, 'create', null, fetchEntity('work_session', $id));
     jsonResponse(['ok' => true, 'id' => $id]);
@@ -49,8 +50,9 @@ if ($action === 'update') {
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
 
     $before = fetchEntity('work_session', $id);
-    db()->prepare('UPDATE work_sessions SET start_time = ?, end_time = ? WHERE id = ?')
-        ->execute([$start, $end, $id]);
+    $type = postStr('work_type');
+    db()->prepare('UPDATE work_sessions SET start_time = ?, end_time = ?, work_type = ? WHERE id = ?')
+        ->execute([$start, $end, isset(WORK_TYPES[$type]) ? $type : '', $id]);
     $after = fetchEntity('work_session', $id);
     auditLog((int)$user['id'], 'work_session', $id, 'update', $before, $after);
 
