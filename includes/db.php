@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function db(): PDO {
     static $pdo = null;
@@ -49,6 +49,8 @@ function initSchema(PDO $pdo): void {
             end_time TEXT,
             note TEXT NOT NULL DEFAULT '',
             is_recorded INTEGER NOT NULL DEFAULT 0,
+            customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+            job_type TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX idx_job_user_start ON job_entries(user_id, start_time);
@@ -67,6 +69,7 @@ function initSchema(PDO $pdo): void {
         CREATE INDEX idx_audit_entity ON audit_log(entity_type, entity_id);
     ");
     createV3Tables($pdo);
+    createV5Tables($pdo);
     $pdo->exec('PRAGMA user_version = ' . SCHEMA_VERSION);
 }
 
@@ -121,6 +124,48 @@ function migrate(PDO $pdo): void {
         $pdo->exec("UPDATE users SET role = 'admin' WHERE is_admin = 1");
         $pdo->exec('PRAGMA user_version = 4');
     }
+
+    if ($version < 5) {
+        // Kunden, Material und Auftragsart; bestehende Aufträge bleiben ohne Kunde.
+        createV5Tables($pdo);
+        $jobCols = array_column($pdo->query("PRAGMA table_info(job_entries)")->fetchAll(), 'name');
+        if (!in_array('customer_id', $jobCols, true)) {
+            $pdo->exec('ALTER TABLE job_entries ADD COLUMN customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL');
+        }
+        if (!in_array('job_type', $jobCols, true)) {
+            $pdo->exec("ALTER TABLE job_entries ADD COLUMN job_type TEXT NOT NULL DEFAULT ''");
+        }
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_job_customer_start ON job_entries(customer_id, start_time)');
+        $pdo->exec('PRAGMA user_version = 5');
+    }
+}
+
+function createV5Tables(PDO $pdo): void {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            customer_no TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            contact TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS materials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL REFERENCES customers(id),
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            used_on TEXT NOT NULL,
+            description TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 1,
+            unit TEXT NOT NULL DEFAULT 'Stk',
+            note TEXT NOT NULL DEFAULT '',
+            is_recorded INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_material_customer ON materials(customer_id, used_on);
+    ");
 }
 
 function createV3Tables(PDO $pdo): void {

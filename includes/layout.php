@@ -26,6 +26,7 @@ function renderHeader(string $title, string $active = ''): void {
     <nav>
         <a href="/dashboard.php" class="<?= $active === 'dashboard' ? 'active' : '' ?>">Arbeitszeit</a>
         <a href="/jobs.php" class="<?= $active === 'jobs' ? 'active' : '' ?>">Aufträge</a>
+        <a href="/customers.php" class="<?= $active === 'customers' ? 'active' : '' ?>">Kunden</a>
         <a href="/balance.php" class="<?= $active === 'balance' ? 'active' : '' ?>">Zeitkonto</a>
         <a href="/calendar.php" class="<?= $active === 'calendar' ? 'active' : '' ?>">Kalender</a>
         <a href="/log.php" class="<?= $active === 'log' ? 'active' : '' ?>">Protokoll</a>

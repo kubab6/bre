@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/audit.php';
 require_once __DIR__ . '/../includes/absence.php';
+require_once __DIR__ . '/../includes/customers.php';
 
 $user = requireLogin();
 
@@ -37,7 +38,7 @@ $stmt->execute($params);
 $entries = $stmt->fetchAll();
 
 function entityLabel(string $type): string {
-    return ['work_session' => 'Arbeitszeit', 'job_entry' => 'Auftrag', 'absence' => 'Abwesenheit'][$type] ?? $type;
+    return ['work_session' => 'Arbeitszeit', 'job_entry' => 'Auftrag', 'absence' => 'Abwesenheit', 'material' => 'Material'][$type] ?? $type;
 }
 
 function actionLabel(string $a): string {
@@ -50,7 +51,13 @@ function fieldLabel(string $f): string {
         'end_time' => 'Ende',
         'job_name' => 'Auftrag',
         'note' => 'Notiz',
-        'is_recorded' => 'Eingetragen',
+        'is_recorded' => 'Abgerechnet',
+        'customer_id' => 'Kunde',
+        'job_type' => 'Art',
+        'used_on' => 'Datum',
+        'description' => 'Material',
+        'quantity' => 'Menge',
+        'unit' => 'Einheit',
         'type' => 'Art',
         'start_date' => 'Von',
         'end_date' => 'Bis',
@@ -61,6 +68,13 @@ function fmtVal(string $field, $val): string {
     if ($val === null || $val === '') return '∅';
     if ($field === 'is_recorded') return ((int)$val === 1) ? 'Ja' : 'Nein';
     if ($field === 'type') return absenceLabel((string)$val);
+    if ($field === 'job_type') return jobTypeLabel((string)$val);
+    if ($field === 'quantity') return fmtQty((float)$val);
+    if ($field === 'customer_id') {
+        static $names = null;
+        $names ??= array_column(customerList(true), 'name', 'id');
+        return $names[(int)$val] ?? ('#' . (int)$val);
+    }
     return (string)$val;
 }
 
@@ -86,6 +100,7 @@ renderHeader('Protokoll', 'log');
                 <option value="">Alle</option>
                 <option value="work_session" <?= $entityFilter === 'work_session' ? 'selected' : '' ?>>Arbeitszeit</option>
                 <option value="job_entry" <?= $entityFilter === 'job_entry' ? 'selected' : '' ?>>Aufträge</option>
+                <option value="material" <?= $entityFilter === 'material' ? 'selected' : '' ?>>Material</option>
                 <option value="absence" <?= $entityFilter === 'absence' ? 'selected' : '' ?>>Abwesenheiten</option>
             </select>
         </label>

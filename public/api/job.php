@@ -5,12 +5,20 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/csrf.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/audit.php';
+require_once __DIR__ . '/../../includes/customers.php';
 
 $user = requireLogin();
 csrfCheck();
 
 $action = postStr('action');
 $now = date('Y-m-d H:i:s');
+
+/** Kunde und Auftragsart aus dem Request; bricht bei unbekanntem Kunden ab. */
+function jobMeta(): array {
+    $customerId = postCustomerId();
+    if ($customerId === false) jsonError('Kunde nicht gefunden.', 404);
+    return [$customerId, postJobType()];
+}
 
 if ($action === 'start') {
     $name = postStr('job_name');
@@ -23,8 +31,9 @@ if ($action === 'start') {
     if ($stmt->fetch()) {
         jsonError('Es läuft bereits ein Auftrag.', 409);
     }
-    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, note) VALUES (?, ?, ?, ?)');
-    $stmt->execute([$user['id'], $name, $now, $note]);
+    [$customerId, $jobType] = jobMeta();
+    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, note, customer_id, job_type) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$user['id'], $name, $now, $note, $customerId, $jobType]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'job_entry', $id, 'create', null, fetchEntity('job_entry', $id));
     jsonResponse(['ok' => true, 'id' => $id, 'start' => $now]);
@@ -43,8 +52,9 @@ if ($action === 'create') {
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
     $targetId = targetUserId($user);
     if ($targetId === null) jsonError('Benutzer nicht gefunden.', 404);
-    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, end_time, note) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute([$targetId, $name, $start, $end, $note]);
+    [$customerId, $jobType] = jobMeta();
+    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, end_time, note, customer_id, job_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$targetId, $name, $start, $end, $note, $customerId, $jobType]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'job_entry', $id, 'create', null, fetchEntity('job_entry', $id));
     jsonResponse(['ok' => true, 'id' => $id]);
@@ -85,9 +95,11 @@ if ($action === 'update') {
     if ($endRaw !== '' && !$end) jsonError('Ungültige Endzeit.');
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
 
+    [$customerId, $jobType] = jobMeta();
+
     $before = fetchEntity('job_entry', $id);
-    db()->prepare('UPDATE job_entries SET job_name = ?, note = ?, start_time = ?, end_time = ? WHERE id = ?')
-        ->execute([$name, $note, $start, $end, $id]);
+    db()->prepare('UPDATE job_entries SET job_name = ?, note = ?, start_time = ?, end_time = ?, customer_id = ?, job_type = ? WHERE id = ?')
+        ->execute([$name, $note, $start, $end, $customerId, $jobType, $id]);
     $after = fetchEntity('job_entry', $id);
     auditLog((int)$user['id'], 'job_entry', $id, 'update', $before, $after);
 

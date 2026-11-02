@@ -7,7 +7,10 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 - **Stoppuhr / Ein-Ausstechen** für die tägliche Arbeitszeit
 - **Letzte 7 Tage** direkt sichtbar, Zeiten inline editier- und löschbar
 - **Arbeitszeit nachtragen** ohne Stoppuhr (Start + Ende)
-- **Aufträge** mit eigener Stoppuhr, Auftragsname und Notiz
+- **Aufträge** mit eigener Stoppuhr, Kunde, Art (Fernwartung, Vor-Ort, Werkstatt), Auftragsname und Notiz; filterbar nach Kunde und Monat, sortierbar nach Datum oder Kunde; Häkchen „Abgerechnet“
+- **Kunden** mit Kundennummer, Adresse, Kontakt und Notiz; Monatsübersicht je Kunde mit Aufträgen und Material
+- **Material je Kunde** (Datum, Bezeichnung, Menge, Einheit, Notiz, abgerechnet)
+- **PDF-Leistungsnachweis** je Kunde und Monat mit Aufträgen, Summen je Art und Material (ohne externe Bibliothek)
 - **Zeitkonto** mit Soll/Ist/Saldo; Urlaubs- und Krankheitstage zählen nicht als Soll
 - **Kalender** für Urlaub und Krankheit, für alle Benutzer einsehbar (Notizen nur für Betroffene und Admins)
 - **Änderungs-Protokoll** aller Zeit- und Abwesenheitsänderungen
@@ -28,6 +31,8 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 | Eigenes Passwort ändern | ✓ | ✓ | ✓ |
 | Zeiten, Aufträge und Zeitkonto aller Benutzer ansehen und bearbeiten | | ✓ | ✓ |
 | Alle Kalenderdetails, Abwesenheiten für andere eintragen | | ✓ | ✓ |
+| Kunden ansehen, Material eintragen, eigene Aufträge einem Kunden zuordnen | ✓ | ✓ | ✓ |
+| Kunden anlegen, bearbeiten, deaktivieren; PDF-Export je Kunde | | ✓ | ✓ |
 | Benutzer verwalten | | ✓ (außer Admins) | ✓ |
 | CSV-Export, Protokoll aller Benutzer | | ✓ | ✓ |
 | Footer und weitere Server-Einstellungen | | | ✓ |
@@ -66,20 +71,22 @@ public/             # DocumentRoot
   calendar.php      # Urlaubs-/Krankheitskalender
   log.php           # Änderungs-Protokoll
   jobs.php          # Auftragszeiten + Notizen
+  customers.php     # Kunden, Monatsübersicht, Material
+  customer_pdf.php  # PDF-Leistungsnachweis je Kunde und Monat
   account.php       # Mein Konto (Passwort ändern)
   admin.php         # Verwaltung: Benutzer, Footer, CSV-Filter
   admin_export.php  # CSV-Download
   logout.php
   api/              # AJAX-Endpunkte (POST + JSON)
   assets/           # CSS + Vanilla JS
-includes/           # PHP-Helfer (db, auth, csrf, layout, helpers, config)
+includes/           # PHP-Helfer (db, auth, csrf, layout, helpers, config, customers, pdf)
 data/               # app.sqlite + sessions/ (auto-erstellt)
 ```
 
 ## Datenbank
 
 SQLite-Datei wird beim ersten Start automatisch unter `data/app.sqlite` angelegt.
-Tabellen: `users`, `work_sessions`, `job_entries`, `absences`, `settings`, `audit_log`.
+Tabellen: `users`, `work_sessions`, `job_entries`, `customers`, `materials`, `absences`, `settings`, `audit_log`.
 Bestehende Datenbanken werden beim nächsten Aufruf automatisch migriert.
 
 Backup = Kopie dieser Datei. Reset = Datei löschen, beim nächsten Aufruf neu einrichten.
@@ -93,4 +100,4 @@ Server läuft in `Europe/Berlin` (siehe `includes/config.php`). Beim Wechsel die
 - Trennzeichen: `;`  (Excel-freundlich)
 - Encoding: UTF-8 mit BOM
 - Spalten Arbeitszeit: Benutzer, Start, Ende, Dauer (Min)
-- Spalten Aufträge: Benutzer, Auftrag, Start, Ende, Dauer (Min), Notiz
+- Spalten Aufträge: Benutzer, Kunde, Art, Auftrag, Start, Ende, Dauer (Min), Notiz, Abgerechnet

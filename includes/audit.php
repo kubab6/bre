@@ -5,14 +5,16 @@ require_once __DIR__ . '/db.php';
 
 const AUDIT_FIELDS = [
     'work_session' => ['start_time', 'end_time'],
-    'job_entry' => ['job_name', 'start_time', 'end_time', 'note', 'is_recorded'],
+    'job_entry' => ['job_name', 'customer_id', 'job_type', 'start_time', 'end_time', 'note', 'is_recorded'],
     'absence' => ['type', 'start_date', 'end_date', 'note'],
+    'material' => ['customer_id', 'used_on', 'description', 'quantity', 'unit', 'note', 'is_recorded'],
 ];
 
 const AUDIT_TABLES = [
     'work_session' => 'work_sessions',
     'job_entry' => 'job_entries',
     'absence' => 'absences',
+    'material' => 'materials',
 ];
 
 function fetchEntity(string $type, int $id): ?array {
