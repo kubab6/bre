@@ -58,6 +58,8 @@ function fieldLabel(string $f): string {
         'description' => 'Material',
         'quantity' => 'Menge',
         'unit' => 'Einheit',
+        'purchase_price' => 'EK',
+        'work_type' => 'Art',
         'type' => 'Art',
         'start_date' => 'Von',
         'end_date' => 'Bis',
@@ -69,6 +71,8 @@ function fmtVal(string $field, $val): string {
     if ($field === 'is_recorded') return ((int)$val === 1) ? 'Ja' : 'Nein';
     if ($field === 'type') return absenceLabel((string)$val);
     if ($field === 'job_type') return jobTypeLabel((string)$val);
+    if ($field === 'work_type') return workTypeLabel((string)$val);
+    if ($field === 'purchase_price') return fmtMoney((float)$val);
     if ($field === 'quantity') return fmtQty((float)$val);
     if ($field === 'customer_id') {
         static $names = null;

@@ -23,12 +23,13 @@ function manageableUser(array $me, int $id): ?array {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
     $action = postStr('action');
-    $target = in_array($action, ['update_balance', 'reset_password', 'set_role', 'delete_user'], true)
+    $target = in_array($action, ['update_balance', 'reset_password', 'set_role', 'delete_user', 'set_name'], true)
         ? manageableUser($me, postInt('user_id'))
         : null;
 
     if ($action === 'create_user') {
         $u = postStr('username');
+        $name = postStr('name');
         $p = (string)postParam('password', '');
         $role = postStr('role', 'user');
         $targetMin = max(0, postInt('daily_target_minutes', 480));
@@ -38,12 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($u === '' || strlen($p) < 8) {
             $err = 'Benutzername erforderlich; Passwort min. 8 Zeichen.';
+        } elseif (mb_strlen($name) > 100) {
+            $err = 'Name zu lang (max. 100 Zeichen).';
         } elseif (!isset($assignableRoles[$role])) {
             $err = 'Diese Rolle darfst du nicht vergeben.';
         } else {
             try {
-                $stmt = db()->prepare('INSERT INTO users (username, password_hash, is_admin, role, daily_target_minutes, balance_start_date) VALUES (?, ?, ?, ?, ?, ?)');
-                $stmt->execute([$u, password_hash($p, PASSWORD_DEFAULT), $role === 'admin' ? 1 : 0, $role, $targetMin, $startDate]);
+                $stmt = db()->prepare('INSERT INTO users (username, name, password_hash, is_admin, role, daily_target_minutes, balance_start_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$u, $name, password_hash($p, PASSWORD_DEFAULT), $role === 'admin' ? 1 : 0, $role, $targetMin, $startDate]);
                 $msg = 'Benutzer „' . $u . '“ angelegt.';
             } catch (PDOException $e) {
                 $err = 'Benutzername bereits vergeben.';
@@ -73,6 +76,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action !== '' && !$target) {
         $err = 'Diesen Benutzer darfst du nicht bearbeiten.';
+    } elseif ($action === 'set_name') {
+        $name = postStr('name');
+        if (mb_strlen($name) > 100) {
+            $err = 'Name zu lang (max. 100 Zeichen).';
+        } else {
+            db()->prepare('UPDATE users SET name = ? WHERE id = ?')->execute([$name, $target['id']]);
+            $msg = 'Name von „' . $target['username'] . '“ gespeichert.';
+        }
     } elseif ($action === 'update_balance') {
         $targetMin = max(0, postInt('daily_target_minutes'));
         $startDate = postStr('balance_start_date');
@@ -113,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$users = db()->query('SELECT id, username, role, created_at, daily_target_minutes, balance_start_date FROM users ORDER BY username')->fetchAll();
+$users = db()->query('SELECT id, username, name, role, created_at, daily_target_minutes, balance_start_date FROM users ORDER BY username')->fetchAll();
 
 renderHeader('Verwaltung', 'admin');
 ?>
@@ -126,6 +137,7 @@ renderHeader('Verwaltung', 'admin');
         <?= csrfField() ?>
         <input type="hidden" name="action" value="create_user">
         <label>Benutzername<input type="text" name="username" required maxlength="100"></label>
+        <label>Name<input type="text" name="name" maxlength="100" placeholder="z.B. Max Mustermann"></label>
         <label>Passwort<input type="password" name="password" required minlength="8"></label>
         <label>Soll/Tag (Min)<input type="number" name="daily_target_minutes" value="480" min="0" max="1440" style="width:90px"></label>
         <label>Konto-Start<input type="date" name="balance_start_date" value="<?= h(date('Y-m-d')) ?>"></label>
@@ -151,7 +163,20 @@ renderHeader('Verwaltung', 'admin');
             $canEdit = canManageUser($me, $u);
         ?>
             <tr>
-                <td data-label="Benutzer"><?= h($u['username']) ?><?= $isMe ? ' <span class="muted">(du)</span>' : '' ?></td>
+                <td data-label="Benutzer">
+                    <?= h($u['username']) ?><?= $isMe ? ' <span class="muted">(du)</span>' : '' ?>
+                    <?php if ($canEdit): ?>
+                    <form method="post" class="inline name-form">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="action" value="set_name">
+                        <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                        <input type="text" name="name" maxlength="100" value="<?= h($u['name']) ?>" placeholder="Name" title="Name, z.B. für PDF-Exporte">
+                        <button type="submit">OK</button>
+                    </form>
+                    <?php elseif ($u['name'] !== ''): ?>
+                        <br><span class="muted"><?= h($u['name']) ?></span>
+                    <?php endif; ?>
+                </td>
                 <td data-label="Rolle">
                     <?php if ($canEdit && !$isMe): ?>
                         <form method="post" class="inline">

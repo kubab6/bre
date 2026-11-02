@@ -161,8 +161,8 @@ renderHeader('Kalender', 'calendar');
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>Von<input type="date" name="start_date" required></label>
-        <label>Bis<input type="date" name="end_date" required></label>
+        <label>Von<input type="date" name="start_date" required data-today></label>
+        <label>Bis<input type="date" name="end_date" required data-today></label>
         <label>Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
         <button type="submit" class="primary">Eintragen</button>
     </form>

@@ -14,13 +14,14 @@ if (!$customer) {
     exit('Kunde nicht gefunden');
 }
 [$month, $from, $to] = monthRange($_GET['month'] ?? null);
-$onlyOpen = !empty($_GET['open']);
+// Variante: "customer" für den Kunden, "internal" zusätzlich mit Einkaufspreisen.
+$internal = ($_GET['variant'] ?? '') === 'internal';
 $cid = (int)$customer['id'];
 
 $jobs = db()->prepare(
-    'SELECT e.*, u.username FROM job_entries e JOIN users u ON u.id = e.user_id
+    'SELECT e.*, COALESCE(NULLIF(u.name, \'\'), u.username) AS user_display FROM job_entries e JOIN users u ON u.id = e.user_id
      WHERE e.customer_id = ? AND e.start_time >= ? AND e.start_time <= ? AND e.end_time IS NOT NULL'
-    . ($onlyOpen ? ' AND e.is_recorded = 0' : '') . '
+    . '
      ORDER BY e.start_time'
 );
 $jobs->execute([$cid, $from . ' 00:00:00', $to . ' 23:59:59']);
@@ -28,7 +29,7 @@ $jobs = $jobs->fetchAll();
 
 $materials = db()->prepare(
     'SELECT * FROM materials WHERE customer_id = ? AND used_on >= ? AND used_on <= ?'
-    . ($onlyOpen ? ' AND is_recorded = 0' : '') . ' ORDER BY used_on, id'
+    . ' ORDER BY used_on, id'
 );
 $materials->execute([$cid, $from, $to]);
 $materials = $materials->fetchAll();
@@ -92,7 +93,7 @@ $newPage();
 
 // Kopf
 $pdf->setFont('B', 16);
-$pdf->text($left, $y, 'Leistungsnachweis');
+$pdf->text($left, $y, $internal ? 'Leistungsnachweis (intern)' : 'Leistungsnachweis');
 $pdf->setFont('R', 10);
 $pdf->text($right, $y, monthLabel($month), 'R');
 $y += 12;
@@ -120,7 +121,7 @@ $meta = [
     'Erstellt am' => date('d.m.Y'),
 ];
 if ($customer['customer_no'] !== '') $meta = ['Kundennr.' => $customer['customer_no']] + $meta;
-if ($onlyOpen) $meta['Umfang'] = 'nur nicht abgerechnete Posten';
+if ($internal) $meta['Variante'] = 'INTERN – nicht für den Kunden';
 foreach ($meta as $k => $v) {
     $pdf->setFont('B', 9);
     $pdf->text(130, $infoY, $k);
@@ -159,7 +160,7 @@ if (!$jobs) {
         $desc = $j['job_name'] . ($j['note'] !== '' ? "\n" . $j['note'] : '');
         $drawRow($jobCols, [
             date('d.m.Y', strtotime($j['start_time'])),
-            $j['username'],
+            $j['user_display'],
             jobTypeLabel($j['job_type']),
             $desc,
             substr($j['start_time'], 11, 5) . '–' . substr($j['end_time'], 11, 5),
@@ -184,7 +185,14 @@ if (!$jobs) {
 }
 
 // Material
-$matCols = [
+$matCols = $internal ? [
+    ['Datum', $left, 18, 'L'],
+    ['Material', $left + 18, 82, 'L'],
+    ['Menge', $left + 100, 16, 'R'],
+    ['Einheit', $left + 118, 16, 'L'],
+    ['EK/Einheit', $left + 134, 22, 'R'],
+    ['EK gesamt', $left + 158, 22, 'R'],
+] : [
     ['Datum', $left, 18, 'L'],
     ['Material', $left + 18, 100, 'L'],
     ['Menge', $left + 118, 22, 'R'],
@@ -200,13 +208,39 @@ if (!$materials) {
     $y += 8;
 } else {
     $drawHead($matCols);
+    $ekTotal = 0.0;
+    $ekMissing = false;
     foreach ($materials as $m) {
-        $drawRow($matCols, [
+        $cells = [
             date('d.m.Y', strtotime($m['used_on'])),
             $m['description'] . ($m['note'] !== '' ? "\n" . $m['note'] : ''),
             fmtQty((float)$m['quantity']),
             $m['unit'],
-        ]);
+        ];
+        if ($internal) {
+            if ($m['purchase_price'] === null) {
+                $ekMissing = true;
+                array_push($cells, '–', '–');
+            } else {
+                $line = (float)$m['purchase_price'] * (float)$m['quantity'];
+                $ekTotal += $line;
+                array_push($cells, fmtMoney((float)$m['purchase_price']), fmtMoney($line));
+            }
+        }
+        $drawRow($matCols, $cells);
+    }
+    if ($internal) {
+        $ensure(10);
+        $y += 1;
+        $pdf->setFont('B', 9.5);
+        $pdf->text($left + 118, $y, 'EK gesamt');
+        $pdf->text($right, $y, fmtMoney($ekTotal), 'R');
+        if ($ekMissing) {
+            $y += 5;
+            $pdf->setFont('R', 8);
+            $pdf->text($right, $y, 'ohne Posten ohne EK-Angabe', 'R');
+        }
+        $y += 8;
     }
 }
 
@@ -217,7 +251,7 @@ for ($i = 0; $i < $pages; $i++) {
     $pdf->setStrokeGray(0.6);
     $pdf->line($left, SimplePdf::H - 13, $right, SimplePdf::H - 13, 0.2);
     $pdf->setFont('R', 7.5);
-    $pdf->text($left, SimplePdf::H - 9, $customer['name'] . ' · ' . monthLabel($month));
+    $pdf->text($left, SimplePdf::H - 9, $customer['name'] . ' · ' . monthLabel($month) . ($internal ? ' · INTERN' : ''));
     $pdf->text($right, SimplePdf::H - 9, 'Seite ' . ($i + 1) . ' von ' . $pages, 'R');
 }
 
@@ -228,7 +262,7 @@ function fmtHours(int $secs): string {
 }
 
 $slug = trim(preg_replace('/[^A-Za-z0-9]+/', '_', iconv('UTF-8', 'ASCII//TRANSLIT', strtr($customer['name'], ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'Ä' => 'Ae', 'Ö' => 'Oe', 'Ü' => 'Ue', 'ß' => 'ss'])) ?: 'Kunde'), '_');
-$filename = 'Leistungsnachweis_' . ($slug ?: 'Kunde') . '_' . $month . '.pdf';
+$filename = 'Leistungsnachweis_' . ($slug ?: 'Kunde') . '_' . $month . ($internal ? '_intern' : '') . '.pdf';
 $data = $pdf->output('Leistungsnachweis ' . $customer['name'] . ' ' . monthLabel($month));
 header('Content-Type: application/pdf');
 header('Content-Disposition: inline; filename="' . $filename . '"');

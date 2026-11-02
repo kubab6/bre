@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+const WORK_TYPES = [
+    'office' => 'Büro',
+    'home' => 'Homeoffice',
+    'field' => 'Außendienst',
+];
+
+function workTypeLabel(?string $type): string {
+    return WORK_TYPES[$type ?? ''] ?? '';
+}
+
+function workTypeOptions(?string $selected, string $empty = '– Art –'): string {
+    $html = '<option value="">' . h($empty) . '</option>';
+    foreach (WORK_TYPES as $k => $label) {
+        $html .= '<option value="' . h($k) . '"' . ($selected === $k ? ' selected' : '') . '>' . h($label) . '</option>';
+    }
+    return $html;
+}
+
 function h(?string $s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }

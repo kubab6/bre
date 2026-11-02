@@ -9,6 +9,8 @@
     const statusEl = document.getElementById('clock-status');
     const btnIn = document.getElementById('btn-clock-in');
     const btnOut = document.getElementById('btn-clock-out');
+    const btnPause = document.getElementById('btn-clock-pause');
+    const typeSel = document.getElementById('clock-work-type');
 
     let stopTicker = null;
 
@@ -25,7 +27,7 @@
     if (btnIn) btnIn.addEventListener('click', async () => {
         Z.clearError(errEl);
         try {
-            const res = await Z.postForm('/api/clock.php', { action: 'in', csrf });
+            await Z.postForm('/api/clock.php', { action: 'in', csrf, work_type: typeSel ? typeSel.value : '' });
             window.location.reload();
         } catch (e) { Z.showError(errEl, e.message); }
     });
@@ -34,6 +36,14 @@
         Z.clearError(errEl);
         try {
             await Z.postForm('/api/clock.php', { action: 'out', csrf });
+            window.location.reload();
+        } catch (e) { Z.showError(errEl, e.message); }
+    });
+
+    if (btnPause) btnPause.addEventListener('click', async () => {
+        Z.clearError(errEl);
+        try {
+            await Z.postForm('/api/clock.php', { action: 'pause', csrf });
             window.location.reload();
         } catch (e) { Z.showError(errEl, e.message); }
     });
@@ -49,6 +59,7 @@
                 action: 'create',
                 csrf: fd.get('csrf'),
                 user_id: fd.get('user_id'),
+                work_type: fd.get('work_type'),
                 start_time: Z.localInputToServer(fd.get('start_time')),
                 end_time: Z.localInputToServer(fd.get('end_time')),
             });
@@ -68,6 +79,7 @@
             try {
                 const res = await Z.postForm('/api/work_session.php', {
                     action: 'update', csrf, id, start_time: start, end_time: end,
+                    work_type: row.querySelector('.edit-type').value,
                 });
                 row.querySelector('.dur').textContent = res.duration != null ? Z.formatShort(res.duration) : '–';
                 ev.target.textContent = '✓';

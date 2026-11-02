@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" href="/favicon/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png">
     <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
-    <link rel="stylesheet" href="/assets/style.css">
+    <link rel="stylesheet" href="<?= h(asset('/assets/style.css')) ?>">
 </head>
 <body class="auth-body">
     <main class="auth-card">

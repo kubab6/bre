@@ -2,15 +2,25 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
-require_once __DIR__ . '/../includes/customers.php';
+require_once __DIR__ . '/../includes/materials.php';
 
 $me = requireLogin();
+
+// Material erfassen/bearbeiten (Formulare auf dieser Seite).
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrfCheck();
+    $back = backUrl('/jobs.php');
+    handleMaterialPost($me, postStr('action'), $back);
+    backTo($back, null, 'Unbekannte Aktion.');
+}
+
 $user = viewedUser($me);
 $own = (int)$user['id'] === (int)$me['id'];
 
-$active = db()->prepare('SELECT id, job_name, note, start_time, customer_id, job_type FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');
+// Es können mehrere Aufträge gleichzeitig laufen.
+$active = db()->prepare('SELECT id, job_name, note, start_time, customer_id, job_type FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time');
 $active->execute([$user['id']]);
-$activeJob = $active->fetch();
+$activeJobs = $active->fetchAll();
 
 $customers = customerList(true);
 $customerNames = array_column($customers, 'name', 'id');
@@ -25,15 +35,15 @@ $where = ['e.user_id = ?'];
 $params = [$user['id']];
 if ($filterMonth !== '' && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $filterMonth)) {
     [, $from, $to] = monthRange($filterMonth);
-    $where[] = 'e.start_time >= ? AND e.start_time <= ?';
-    array_push($params, $from . ' 00:00:00', $to . ' 23:59:59');
     $rangeTitle = monthLabel($filterMonth);
 } else {
     $filterMonth = '';
-    $where[] = 'e.start_time >= ?';
-    $params[] = (new DateTime('-29 days'))->setTime(0, 0)->format('Y-m-d H:i:s');
+    $from = (new DateTime('-29 days'))->format('Y-m-d');
+    $to = date('Y-m-d');
     $rangeTitle = 'Letzte 30 Tage';
 }
+$where[] = 'e.start_time >= ? AND e.start_time <= ?';
+array_push($params, $from . ' 00:00:00', $to . ' 23:59:59');
 if ($filterCustomer === 'none') {
     $where[] = 'e.customer_id IS NULL';
 } elseif ($filterCustomer !== '') {
@@ -63,40 +73,62 @@ foreach ($rows as $r) {
 }
 arsort($totalsByCustomer);
 
+// Material des angezeigten Benutzers im gleichen Zeitraum und für den gewählten Kunden.
+$mWhere = ['m.user_id = ?', 'm.used_on >= ?', 'm.used_on <= ?'];
+$mParams = [$user['id'], $from, $to];
+if ($filterCustomer === 'none') {
+    $mWhere[] = '0';
+} elseif ($filterCustomer !== '') {
+    $mWhere[] = 'm.customer_id = ?';
+    $mParams[] = (int)$filterCustomer;
+}
+$mStmt = db()->prepare(
+    'SELECT m.*, c.name AS customer_name FROM materials m JOIN customers c ON c.id = m.customer_id
+     WHERE ' . implode(' AND ', $mWhere) . ' ORDER BY ' . ($sort === 'customer' ? 'c.name COLLATE NOCASE, ' : '') . 'm.used_on DESC, m.id DESC'
+);
+$mStmt->execute($mParams);
+$materials = $mStmt->fetchAll();
+
+$query = array_filter(['user' => $own ? null : (int)$user['id'], 'customer' => $filterCustomer, 'month' => $filterMonth, 'sort' => $sort === 'date' ? null : $sort]);
+$self = '/jobs.php' . ($query ? '?' . http_build_query($query) : '');
+
 renderHeader('Aufträge', 'jobs');
 ?>
+<?= renderFlash() ?>
 <?= userSwitcher($me, $user, '/jobs.php') ?>
+<?= customerDatalist() ?>
+<?= unitDatalist() ?>
 <section class="card stopwatch">
-    <?php if (!$own): ?>
-    <h2>Aufträge von <?= h($user['username']) ?></h2>
-    <p class="muted"><?= $activeJob ? 'Läuft gerade: ' . h($activeJob['job_name']) . ' seit ' . h(substr($activeJob['start_time'], 11, 5)) : 'Kein laufender Auftrag' ?></p>
-    <?php else: ?>
-    <h2>Auftragszeit erfassen</h2>
-    <?php if ($activeJob): ?>
-        <div class="clock" id="job-clock" data-active="1" data-start="<?= h($activeJob['start_time']) ?>">
-            <span class="time" id="job-time">00:00:00</span>
+    <h2><?= $own ? 'Auftragszeit erfassen' : 'Aufträge von ' . h(displayName($user)) ?></h2>
+    <?php if (!$activeJobs && !$own): ?><p class="muted">Kein laufender Auftrag</p><?php endif; ?>
+    <?php if ($activeJobs): ?>
+    <div class="running-jobs">
+        <?php foreach ($activeJobs as $aj): ?>
+        <div class="running-job" data-id="<?= (int)$aj['id'] ?>" data-start="<?= h($aj['start_time']) ?>">
+            <span class="time job-time">00:00:00</span>
             <span class="status">
-                <?php if ($activeJob['customer_id'] !== null): ?><?= h($customerNames[$activeJob['customer_id']] ?? '') ?>: <?php endif; ?>
-                <strong><?= h($activeJob['job_name']) ?></strong>
-                <?php if ($activeJob['job_type'] !== ''): ?> <span class="badge"><?= h(jobTypeLabel($activeJob['job_type'])) ?></span><?php endif; ?>
-                <?php if ($activeJob['note']): ?> – <em><?= h($activeJob['note']) ?></em><?php endif; ?>
-                <br>seit <?= h(substr($activeJob['start_time'], 11, 5)) ?>
+                <?php if ($aj['customer_id'] !== null): ?><?= h($customerNames[$aj['customer_id']] ?? '') ?>: <?php endif; ?>
+                <strong><?= h($aj['job_name']) ?></strong>
+                <?php if ($aj['job_type'] !== ''): ?> <span class="badge"><?= h(jobTypeLabel($aj['job_type'])) ?></span><?php endif; ?>
+                <?php if ($aj['note']): ?> – <em><?= h($aj['note']) ?></em><?php endif; ?>
+                <br>seit <?= h(date('d.m. H:i', strtotime($aj['start_time']))) ?>
             </span>
+            <?php if ($own): ?><button type="button" class="danger btn-job-stop" data-id="<?= (int)$aj['id'] ?>">Stoppen</button><?php endif; ?>
         </div>
-        <div class="actions">
-            <button id="btn-job-stop" type="button" class="danger" data-id="<?= (int)$activeJob['id'] ?>">Stoppen</button>
-        </div>
-    <?php else: ?>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+    <?php if ($own): ?>
+        <?php if ($activeJobs): ?><p class="hint">Du kannst zusätzlich einen weiteren Auftrag starten:</p><?php endif; ?>
         <form id="job-start-form" class="inline-form">
             <?= csrfField() ?>
-            <label>Kunde<select name="customer_id"><?= customerOptions($customers, null) ?></select></label>
+            <label>Kunde<input type="text" name="customer_name" list="customer-list" maxlength="200" placeholder="Name eintippen" autocomplete="off"></label>
             <label>Art<select name="job_type"><?= jobTypeOptions(null) ?></select></label>
             <label>Auftrag<input type="text" name="job_name" required maxlength="200" placeholder="z.B. Drucker einrichten"></label>
             <label>Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
-            <button type="submit" class="primary">Starten</button>
+            <button type="submit" class="primary"><?= $activeJobs ? 'Weiteren starten' : 'Starten' ?></button>
         </form>
-    <?php endif; ?>
-    <p class="hint" id="job-error" hidden></p>
+        <p class="hint" id="job-error" hidden></p>
     <?php endif; ?>
 
     <details class="manual-add"<?= $own ? '' : ' open' ?>>
@@ -104,16 +136,31 @@ renderHeader('Aufträge', 'jobs');
         <form id="job-create-form" class="inline-form">
             <?= csrfField() ?>
             <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
-            <label>Kunde<select name="customer_id"><?= customerOptions($customers, null) ?></select></label>
+            <label>Kunde<input type="text" name="customer_name" list="customer-list" maxlength="200" placeholder="Name eintippen" autocomplete="off"></label>
             <label>Art<select name="job_type"><?= jobTypeOptions(null) ?></select></label>
             <label>Auftrag<input type="text" name="job_name" required maxlength="200"></label>
-            <label>Start<input type="datetime-local" name="start_time" required></label>
-            <label>Ende<input type="datetime-local" name="end_time" required></label>
+            <label>Start<input type="datetime-local" name="start_time" required data-today></label>
+            <label>Ende<input type="datetime-local" name="end_time" required data-today></label>
             <label>Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
             <button type="submit" class="primary">Speichern</button>
         </form>
         <p class="hint" id="job-create-error" hidden></p>
     </details>
+    <p class="hint">Unbekannte Kundennamen werden automatisch als neuer Kunde angelegt.</p>
+</section>
+
+<section class="card">
+    <h2>Material erfassen</h2>
+    <form method="post" action="/jobs.php" class="inline-form material-form">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="create_material">
+        <input type="hidden" name="back" value="<?= h($self) ?>">
+        <label>Kunde<input type="text" name="customer_name" list="customer-list" required maxlength="200" placeholder="Name eintippen" autocomplete="off"
+            value="<?= h($filterCustomer !== '' && $filterCustomer !== 'none' ? ($customerNames[(int)$filterCustomer] ?? '') : '') ?>"></label>
+        <?= materialFields(null, date('Y-m-d')) ?>
+        <button type="submit" class="primary">Eintragen</button>
+    </form>
+    <p class="hint">Der Einkaufspreis (EK) ist nur intern sichtbar und erscheint nur im internen PDF.</p>
 </section>
 
 <section class="card">
@@ -133,7 +180,7 @@ renderHeader('Aufträge', 'jobs');
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>Monat<input type="month" name="month" value="<?= h($filterMonth) ?>" onchange="this.form.submit()"></label>
+        <label>Zeitraum<select name="month" onchange="this.form.submit()"><?= monthOptions($filterMonth, ['' => 'Letzte 30 Tage']) ?></select></label>
         <label>Sortierung
             <select name="sort" onchange="this.form.submit()">
                 <option value="date">Nach Datum</option>
@@ -168,7 +215,7 @@ renderHeader('Aufträge', 'jobs');
             <?php endif; endif; ?>
             <div class="job-row <?= $r['is_recorded'] ? 'is-recorded' : '' ?>" data-id="<?= (int)$r['id'] ?>">
                 <div class="job-row-main">
-                    <label>Kunde<select class="edit-customer"><?= customerOptions($customers, $r['customer_id'] !== null ? (int)$r['customer_id'] : null) ?></select></label>
+                    <label>Kunde<input type="text" class="edit-customer" list="customer-list" maxlength="200" autocomplete="off" value="<?= h($r['customer_id'] !== null ? ($customerNames[$r['customer_id']] ?? '') : '') ?>"></label>
                     <label>Art<select class="edit-type"><?= jobTypeOptions($r['job_type']) ?></select></label>
                     <label>Auftrag<input type="text" class="edit-job" value="<?= h($r['job_name']) ?>" maxlength="200"></label>
                     <label>Notiz<input type="text" class="edit-note" value="<?= h($r['note']) ?>" maxlength="500"></label>
@@ -191,6 +238,18 @@ renderHeader('Aufträge', 'jobs');
             </div>
         <?php endforeach; endif; ?>
     </div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <h2>Material · <?= h($rangeTitle) ?></h2>
+        <?php if ($filterCustomer !== '' && $filterCustomer !== 'none'): ?><a href="/customers.php?id=<?= (int)$filterCustomer ?><?= $filterMonth ? '&month=' . h($filterMonth) : '' ?>" class="muted">Zur Kundenseite</a><?php endif; ?>
+    </div>
+    <?php if (!$materials): ?>
+        <p class="muted">Kein Material in diesem Zeitraum.</p>
+    <?php else: ?>
+        <?= renderMaterialTable($materials, '/jobs.php', $self, false, true) ?>
+    <?php endif; ?>
 </section>
 <?php
 renderFooter('/assets/jobs.js');
