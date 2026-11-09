@@ -54,6 +54,7 @@ function fieldLabel(string $f): string {
         'is_recorded' => 'Abgerechnet',
         'customer_id' => 'Kunde',
         'job_type' => 'Art',
+        'travel' => 'Anfahrt',
         'used_on' => 'Datum',
         'description' => 'Material',
         'quantity' => 'Menge',

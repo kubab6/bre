@@ -28,7 +28,7 @@ function customerById(int $id): ?array {
 
 /** Alle Kunden alphabetisch; inaktive nur, wenn $withInactive. */
 function customerList(bool $withInactive = false): array {
-    $sql = 'SELECT id, name, customer_no, is_active FROM customers'
+    $sql = 'SELECT id, name, customer_no, address, is_active FROM customers'
         . ($withInactive ? '' : ' WHERE is_active = 1')
         . ' ORDER BY name COLLATE NOCASE';
     return db()->query($sql)->fetchAll();
@@ -109,13 +109,35 @@ function customerNameById(?int $id): string {
     return $c ? $c['name'] : '';
 }
 
-/** <datalist> mit allen aktiven Kunden für Eingabefelder mit Vorschlägen. */
+/** Adresse eines Kunden als eine Zeile ("Straße 1, 12345 Ort") für das Feld Anfahrt. */
+function addressLine(string $address): string {
+    $lines = array_filter(array_map('trim', preg_split('/\R/', $address)), fn($l) => $l !== '');
+    return implode(', ', $lines);
+}
+
+/**
+ * <datalist> mit allen aktiven Kunden für Eingabefelder mit Vorschlägen.
+ * Die Adresse steht in data-address (Vorschlag für die Anfahrt).
+ */
 function customerDatalist(string $id = 'customer-list'): string {
     $html = '<datalist id="' . h($id) . '">';
     foreach (customerList() as $c) {
-        $html .= '<option value="' . h($c['name']) . '">' . ($c['customer_no'] !== '' ? h($c['customer_no']) : '') . '</option>';
+        $html .= '<option value="' . h($c['name']) . '" data-address="' . h(addressLine($c['address'])) . '">'
+            . ($c['customer_no'] !== '' ? h($c['customer_no']) : '') . '</option>';
     }
     return $html . '</datalist>';
+}
+
+/** Anfahrt aus POST: nur bei Vor-Ort; leer = Hauptadresse des Kunden. False wenn zu lang. */
+function postTravel(string $jobType, ?int $customerId) {
+    if ($jobType !== 'onsite') return '';
+    $travel = trim(preg_replace('/\s+/u', ' ', postStr('travel')));
+    if (mb_strlen($travel) > 300) return false;
+    if ($travel === '' && $customerId !== null) {
+        $c = customerById($customerId);
+        $travel = $c ? mb_substr(addressLine($c['address']), 0, 300) : '';
+    }
+    return $travel;
 }
 
 /**

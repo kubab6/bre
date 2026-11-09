@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 function db(): PDO {
     static $pdo = null;
@@ -65,6 +65,7 @@ function initSchema(PDO $pdo): void {
             is_recorded INTEGER NOT NULL DEFAULT 0,
             customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
             job_type TEXT NOT NULL DEFAULT '',
+            travel TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX idx_job_user_start ON job_entries(user_id, start_time);
@@ -161,6 +162,12 @@ function migrate(PDO $pdo): void {
         addColumnIfMissing($pdo, 'work_sessions', 'pause_after', 'INTEGER NOT NULL DEFAULT 0');
         addColumnIfMissing($pdo, 'materials', 'purchase_price', 'REAL');
         $pdo->exec('PRAGMA user_version = 6');
+    }
+
+    if ($version < 7) {
+        // Anfahrt bei Vor-Ort-Aufträgen. Nur eine neue Spalte.
+        addColumnIfMissing($pdo, 'job_entries', 'travel', "TEXT NOT NULL DEFAULT ''");
+        $pdo->exec('PRAGMA user_version = 7');
     }
 }
 

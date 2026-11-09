@@ -14,7 +14,7 @@ if (!$customer) {
     exit('Kunde nicht gefunden');
 }
 [$month, $from, $to] = monthRange($_GET['month'] ?? null);
-// Variante: "customer" für den Kunden, "internal" zusätzlich mit Einkaufspreisen.
+// Variante: "customer" für den Kunden (nur Aufträge), "internal" zusätzlich mit Material und Einkaufspreisen.
 $internal = ($_GET['variant'] ?? '') === 'internal';
 $cid = (int)$customer['id'];
 
@@ -27,12 +27,15 @@ $jobs = db()->prepare(
 $jobs->execute([$cid, $from . ' 00:00:00', $to . ' 23:59:59']);
 $jobs = $jobs->fetchAll();
 
-$materials = db()->prepare(
-    'SELECT * FROM materials WHERE customer_id = ? AND used_on >= ? AND used_on <= ?'
-    . ' ORDER BY used_on, id'
-);
-$materials->execute([$cid, $from, $to]);
-$materials = $materials->fetchAll();
+$materials = [];
+if ($internal) {
+    $materials = db()->prepare(
+        'SELECT * FROM materials WHERE customer_id = ? AND used_on >= ? AND used_on <= ?'
+        . ' ORDER BY used_on, id'
+    );
+    $materials->execute([$cid, $from, $to]);
+    $materials = $materials->fetchAll();
+}
 
 // ------------------------------------------------------------------ Layout
 $pdf = new SimplePdf();
@@ -157,7 +160,10 @@ if (!$jobs) {
         $total += $secs;
         $type = jobTypeLabel($j['job_type']) ?: 'Ohne Art';
         $byType[$type] = ($byType[$type] ?? 0) + $secs;
-        $desc = $j['job_name'] . ($j['note'] !== '' ? "\n" . $j['note'] : '');
+        // Anfahrt bei Vor-Ort; ältere Einträge ohne Angabe: Adresse des Kunden.
+        $travel = $j['job_type'] === 'onsite' ? ($j['travel'] !== '' ? $j['travel'] : addressLine($customer['address'])) : '';
+        $desc = $j['job_name'] . ($j['note'] !== '' ? "\n" . $j['note'] : '')
+            . ($travel !== '' ? "\nAnfahrt: " . $travel : '');
         $drawRow($jobCols, [
             date('d.m.Y', strtotime($j['start_time'])),
             $j['user_display'],
@@ -184,40 +190,35 @@ if (!$jobs) {
     $y += 10;
 }
 
-// Material
-$matCols = $internal ? [
-    ['Datum', $left, 18, 'L'],
-    ['Material', $left + 18, 82, 'L'],
-    ['Menge', $left + 100, 16, 'R'],
-    ['Einheit', $left + 118, 16, 'L'],
-    ['EK/Einheit', $left + 134, 22, 'R'],
-    ['EK gesamt', $left + 158, 22, 'R'],
-] : [
-    ['Datum', $left, 18, 'L'],
-    ['Material', $left + 18, 100, 'L'],
-    ['Menge', $left + 118, 22, 'R'],
-    ['Einheit', $left + 143, 37, 'L'],
-];
-$ensure(20);
-$pdf->setFont('B', 11);
-$pdf->text($left, $y, 'Material');
-$y += 6;
-if (!$materials) {
-    $pdf->setFont('R', 9);
-    $pdf->text($left, $y, 'Kein Material in diesem Zeitraum.');
-    $y += 8;
-} else {
-    $drawHead($matCols);
-    $ekTotal = 0.0;
-    $ekMissing = false;
-    foreach ($materials as $m) {
-        $cells = [
-            date('d.m.Y', strtotime($m['used_on'])),
-            $m['description'] . ($m['note'] !== '' ? "\n" . $m['note'] : ''),
-            fmtQty((float)$m['quantity']),
-            $m['unit'],
-        ];
-        if ($internal) {
+// Material mit Einkaufspreisen (nur im internen PDF)
+if ($internal) {
+    $matCols = [
+        ['Datum', $left, 18, 'L'],
+        ['Material', $left + 18, 82, 'L'],
+        ['Menge', $left + 100, 16, 'R'],
+        ['Einheit', $left + 118, 16, 'L'],
+        ['EK/Einheit', $left + 134, 22, 'R'],
+        ['EK gesamt', $left + 158, 22, 'R'],
+    ];
+    $ensure(20);
+    $pdf->setFont('B', 11);
+    $pdf->text($left, $y, 'Material');
+    $y += 6;
+    if (!$materials) {
+        $pdf->setFont('R', 9);
+        $pdf->text($left, $y, 'Kein Material in diesem Zeitraum.');
+        $y += 8;
+    } else {
+        $drawHead($matCols);
+        $ekTotal = 0.0;
+        $ekMissing = false;
+        foreach ($materials as $m) {
+            $cells = [
+                date('d.m.Y', strtotime($m['used_on'])),
+                $m['description'] . ($m['note'] !== '' ? "\n" . $m['note'] : ''),
+                fmtQty((float)$m['quantity']),
+                $m['unit'],
+            ];
             if ($m['purchase_price'] === null) {
                 $ekMissing = true;
                 array_push($cells, '–', '–');
@@ -226,10 +227,8 @@ if (!$materials) {
                 $ekTotal += $line;
                 array_push($cells, fmtMoney((float)$m['purchase_price']), fmtMoney($line));
             }
+            $drawRow($matCols, $cells);
         }
-        $drawRow($matCols, $cells);
-    }
-    if ($internal) {
         $ensure(10);
         $y += 1;
         $pdf->setFont('B', 9.5);

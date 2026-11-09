@@ -246,7 +246,7 @@ if ($customer):
     <?php if ($isMgr): ?>
     <div class="pdf-buttons">
         <a class="btn primary" href="/customer_pdf.php?id=<?= $cid ?>&month=<?= h($month) ?>&variant=customer" target="_blank">PDF für Kunden</a>
-        <a class="btn" href="/customer_pdf.php?id=<?= $cid ?>&month=<?= h($month) ?>&variant=internal" target="_blank">PDF intern (mit EK)</a>
+        <a class="btn" href="/customer_pdf.php?id=<?= $cid ?>&month=<?= h($month) ?>&variant=internal" target="_blank">PDF intern (mit Material und EK)</a>
     </div>
     <?php endif; ?>
 </section>
@@ -271,7 +271,7 @@ if ($customer):
                 <td data-label="Datum"><?= h(date('d.m.Y', strtotime($j['start_time']))) ?></td>
                 <?php if ($isMgr): ?><td data-label="Mitarbeiter"><?= h($j['user_display']) ?></td><?php endif; ?>
                 <td data-label="Art"><?= h(jobTypeLabel($j['job_type'])) ?></td>
-                <td data-label="Auftrag"><?= h($j['job_name']) ?><?php if ($j['note'] !== ''): ?><br><span class="muted"><?= h($j['note']) ?></span><?php endif; ?></td>
+                <td data-label="Auftrag"><?= h($j['job_name']) ?><?php if ($j['note'] !== ''): ?><br><span class="muted"><?= h($j['note']) ?></span><?php endif; ?><?php if ($j['job_type'] === 'onsite' && $j['travel'] !== ''): ?><br><span class="muted">Anfahrt: <?= h($j['travel']) ?></span><?php endif; ?></td>
                 <td data-label="Zeit"><?= h(substr($j['start_time'], 11, 5)) ?>–<?= $j['end_time'] ? h(substr($j['end_time'], 11, 5)) : '…' ?></td>
                 <td data-label="Dauer" class="num"><?= $j['end_time'] ? h(fmtDurationShort(diffSeconds($j['start_time'], $j['end_time']))) : '<em>läuft…</em>' ?></td>
                 <td data-label="Abgerechnet"><?= $j['is_recorded'] ? 'Ja' : 'Nein' ?></td>
@@ -380,12 +380,12 @@ else:
         <label>Variante
             <select name="variant">
                 <option value="customer">Für Kunden</option>
-                <option value="internal">Intern (mit EK-Preisen)</option>
+                <option value="internal">Intern (mit Material und EK-Preisen)</option>
             </select>
         </label>
         <button type="submit" class="primary">PDF erstellen</button>
     </form>
-    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) und das Material des Kunden im gewählten Monat. Die interne Variante zeigt zusätzlich die Einkaufspreise.</p>
+    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) des Kunden im gewählten Monat, bei Vor-Ort-Aufträgen mit Anfahrt. Material mit Einkaufspreisen steht nur in der internen Variante.</p>
 </section>
 <?php endif; ?>
 
