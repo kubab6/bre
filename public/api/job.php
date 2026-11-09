@@ -15,12 +15,15 @@ $now = date('Y-m-d H:i:s');
 
 /**
  * Kunde (eingetippter Name; unbekannte Namen werden als Kunde angelegt)
- * und Auftragsart aus dem Request.
+ * Auftragsart und Anfahrt (nur Vor-Ort) aus dem Request.
  */
 function jobMeta(): array {
     $customerId = resolveCustomerName(postStr('customer_name'));
     if ($customerId === false) jsonError('Kundenname zu lang (max. 200 Zeichen).');
-    return [$customerId, postJobType()];
+    $jobType = postJobType();
+    $travel = postTravel($jobType, $customerId);
+    if ($travel === false) jsonError('Anfahrt zu lang (max. 300 Zeichen).');
+    return [$customerId, $jobType, $travel];
 }
 
 if ($action === 'start') {
@@ -30,9 +33,9 @@ if ($action === 'start') {
     if (mb_strlen($note) > 500) jsonError('Notiz zu lang.');
 
     // Mehrere Aufträge dürfen gleichzeitig laufen.
-    [$customerId, $jobType] = jobMeta();
-    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, note, customer_id, job_type) VALUES (?, ?, ?, ?, ?, ?)');
-    $stmt->execute([$user['id'], $name, $now, $note, $customerId, $jobType]);
+    [$customerId, $jobType, $travel] = jobMeta();
+    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, note, customer_id, job_type, travel) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$user['id'], $name, $now, $note, $customerId, $jobType, $travel]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'job_entry', $id, 'create', null, fetchEntity('job_entry', $id));
     jsonResponse(['ok' => true, 'id' => $id, 'start' => $now]);
@@ -51,9 +54,9 @@ if ($action === 'create') {
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
     $targetId = targetUserId($user);
     if ($targetId === null) jsonError('Benutzer nicht gefunden.', 404);
-    [$customerId, $jobType] = jobMeta();
-    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, end_time, note, customer_id, job_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    $stmt->execute([$targetId, $name, $start, $end, $note, $customerId, $jobType]);
+    [$customerId, $jobType, $travel] = jobMeta();
+    $stmt = db()->prepare('INSERT INTO job_entries (user_id, job_name, start_time, end_time, note, customer_id, job_type, travel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$targetId, $name, $start, $end, $note, $customerId, $jobType, $travel]);
     $id = (int)db()->lastInsertId();
     auditLog((int)$user['id'], 'job_entry', $id, 'create', null, fetchEntity('job_entry', $id));
     jsonResponse(['ok' => true, 'id' => $id]);
@@ -97,16 +100,16 @@ if ($action === 'update') {
     if ($endRaw !== '' && !$end) jsonError('Ungültige Endzeit.');
     if ($end !== null && strtotime($end) < strtotime($start)) jsonError('Ende vor Start.');
 
-    [$customerId, $jobType] = jobMeta();
+    [$customerId, $jobType, $travel] = jobMeta();
 
     $before = fetchEntity('job_entry', $id);
-    db()->prepare('UPDATE job_entries SET job_name = ?, note = ?, start_time = ?, end_time = ?, customer_id = ?, job_type = ? WHERE id = ?')
-        ->execute([$name, $note, $start, $end, $customerId, $jobType, $id]);
+    db()->prepare('UPDATE job_entries SET job_name = ?, note = ?, start_time = ?, end_time = ?, customer_id = ?, job_type = ?, travel = ? WHERE id = ?')
+        ->execute([$name, $note, $start, $end, $customerId, $jobType, $travel, $id]);
     $after = fetchEntity('job_entry', $id);
     auditLog((int)$user['id'], 'job_entry', $id, 'update', $before, $after);
 
     $duration = $end ? diffSeconds($start, $end) : null;
-    jsonResponse(['ok' => true, 'duration' => $duration]);
+    jsonResponse(['ok' => true, 'duration' => $duration, 'travel' => $travel]);
 }
 
 if ($action === 'set_recorded') {

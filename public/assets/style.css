@@ -531,3 +531,24 @@ a.btn.primary:hover { background: var(--primary-hover); }
 @media (max-width: 600px) {
     .running-job .time { font-size: 22px; min-width: 0; }
 }
+
+/* Versteckte Felder (z.B. Anfahrt) trotz display:flex bei label ausblenden. */
+[hidden] { display: none !important; }
+.job-row-main .travel-field { grid-column: 1 / -1; }
+.inline-form .travel-field input { min-width: 260px; }
+
+/* Vorschlagsliste für Eingabefelder (Kunde, Einheit) */
+.combo { position: relative; display: block; }
+.combo input { width: 100%; }
+.combo-menu {
+    position: absolute; top: calc(100% + 2px); left: 0; z-index: 50;
+    min-width: 100%; max-width: 360px; max-height: 260px; overflow-y: auto;
+    margin: 0; padding: 4px 0; list-style: none;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+}
+.combo-menu li { padding: 6px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-menu li.current { font-weight: 600; }
+.combo-menu li:hover, .combo-menu li.active { background: var(--row-hover); color: var(--primary); }

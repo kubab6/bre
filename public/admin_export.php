@@ -26,11 +26,11 @@ if ($type === 'jobs') {
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 if ($type === 'jobs') {
-    $sql = "SELECT COALESCE(NULLIF(u.name, ''), u.username) AS username, c.name AS customer_name, e.job_type, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded
+    $sql = "SELECT COALESCE(NULLIF(u.name, ''), u.username) AS username, c.name AS customer_name, e.job_type, e.travel, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded
             FROM job_entries e JOIN users u ON u.id = e.user_id
             LEFT JOIN customers c ON c.id = e.customer_id
             $whereSql ORDER BY e.start_time";
-    $headers = ['Mitarbeiter','Kunde','Art','Auftrag','Start','Ende','Dauer (Min)','Notiz','Abgerechnet'];
+    $headers = ['Mitarbeiter','Kunde','Art','Anfahrt','Auftrag','Start','Ende','Dauer (Min)','Notiz','Abgerechnet'];
     $filename = 'auftragszeiten_' . date('Y-m-d') . '.csv';
 } else {
     $sql = "SELECT COALESCE(NULLIF(u.name, ''), u.username) AS username, e.work_type, e.start_time, e.end_time
@@ -54,7 +54,7 @@ while ($r = $stmt->fetch()) {
     $minutes = $r['end_time'] ? (int)round(diffSeconds($r['start_time'], $r['end_time']) / 60) : '';
     if ($type === 'jobs') {
         fputcsv($out, [
-            $r['username'], $r['customer_name'] ?? '', jobTypeLabel($r['job_type']), $r['job_name'], $r['start_time'], $r['end_time'] ?? '',
+            $r['username'], $r['customer_name'] ?? '', jobTypeLabel($r['job_type']), $r['travel'], $r['job_name'], $r['start_time'], $r['end_time'] ?? '',
             $minutes, $r['note'], ((int)$r['is_recorded'] === 1 ? 'Ja' : 'Nein'),
         ], ';');
     } else {

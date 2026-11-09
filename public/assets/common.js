@@ -105,11 +105,115 @@ window.ZE = (function () {
             wrap.appendChild(btn);
         });
     }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => addTodayButtons());
-    } else {
-        addTodayButtons();
+    // Eingabefelder mit Vorschlagsliste (<datalist>): Die Liste klappt schon
+    // beim Anklicken auf und filtert beim Tippen. Freie Eingabe bleibt möglich.
+    let comboSeq = 0;
+    function addComboboxes(root) {
+        (root || document).querySelectorAll('input[list]').forEach((input) => {
+            const dl = document.getElementById(input.getAttribute('list'));
+            if (!dl || input.dataset.comboReady) return;
+            input.dataset.comboReady = '1';
+            input.dataset.combo = dl.id;
+            input.removeAttribute('list');
+            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('role', 'combobox');
+            input.setAttribute('aria-autocomplete', 'list');
+            input.setAttribute('aria-expanded', 'false');
+
+            const wrap = document.createElement('span');
+            wrap.className = 'combo';
+            input.parentNode.insertBefore(wrap, input);
+            wrap.appendChild(input);
+            const menu = document.createElement('ul');
+            menu.className = 'combo-menu';
+            menu.id = 'combo-menu-' + (++comboSeq);
+            menu.setAttribute('role', 'listbox');
+            menu.hidden = true;
+            wrap.appendChild(menu);
+            input.setAttribute('aria-controls', menu.id);
+
+            let active = -1;
+            function items() { return Array.from(menu.children); }
+            function setActive(i) {
+                const list = items();
+                list.forEach((li, n) => li.classList.toggle('active', n === i));
+                active = i;
+                if (list[i]) list[i].scrollIntoView({ block: 'nearest' });
+            }
+            function close() {
+                menu.hidden = true;
+                input.setAttribute('aria-expanded', 'false');
+                active = -1;
+            }
+            function open() {
+                const q = input.value.trim().toLowerCase();
+                const opts = Array.from(dl.options).map(o => ({ value: o.value, label: o.textContent.trim() }));
+                // Steht schon ein vollständiger Name drin, alle zeigen (zum Wechseln).
+                const exact = opts.some(o => o.value.toLowerCase() === q);
+                const shown = (q === '' || exact) ? opts : opts.filter(o =>
+                    o.value.toLowerCase().includes(q) || o.label.toLowerCase().includes(q));
+                menu.innerHTML = '';
+                shown.forEach((o) => {
+                    const li = document.createElement('li');
+                    li.setAttribute('role', 'option');
+                    li.dataset.value = o.value;
+                    li.textContent = o.value;
+                    if (o.label && o.label !== o.value) {
+                        const s = document.createElement('span');
+                        s.className = 'muted';
+                        s.textContent = ' ' + o.label;
+                        li.appendChild(s);
+                    }
+                    if (o.value.toLowerCase() === q) li.classList.add('current');
+                    menu.appendChild(li);
+                });
+                menu.hidden = shown.length === 0;
+                input.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+                active = -1;
+            }
+            function choose(li) {
+                input.value = li.dataset.value;
+                close();
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            input.addEventListener('focus', open);
+            input.addEventListener('click', () => { if (menu.hidden) open(); });
+            input.addEventListener('input', (ev) => { if (ev.isTrusted) open(); });
+            input.addEventListener('blur', close);
+            input.addEventListener('keydown', (ev) => {
+                const list = items();
+                if (ev.key === 'ArrowDown') {
+                    ev.preventDefault();
+                    if (menu.hidden) { open(); return; }
+                    setActive(Math.min(active + 1, list.length - 1));
+                } else if (ev.key === 'ArrowUp') {
+                    ev.preventDefault();
+                    setActive(Math.max(active - 1, 0));
+                } else if (ev.key === 'Enter' && !menu.hidden && list[active]) {
+                    ev.preventDefault();
+                    choose(list[active]);
+                } else if (ev.key === 'Escape' && !menu.hidden) {
+                    ev.preventDefault();
+                    close();
+                }
+            });
+            // mousedown statt click, damit das Feld den Fokus behält.
+            menu.addEventListener('mousedown', (ev) => {
+                const li = ev.target.closest('li');
+                ev.preventDefault();
+                if (li) choose(li);
+            });
+        });
     }
 
-    return { addTodayButtons, formatDuration, formatShort, parseServerLocal, postForm, startTicker, showError, clearError, localInputToServer };
+    function init() { addTodayButtons(); addComboboxes(); }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    return { addComboboxes, addTodayButtons, formatDuration, formatShort, parseServerLocal, postForm, startTicker, showError, clearError, localInputToServer };
 })();

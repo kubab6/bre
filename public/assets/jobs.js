@@ -9,6 +9,51 @@
         Z.startTicker(el.querySelector('.job-time'), Z.parseServerLocal(el.dataset.start));
     });
 
+    // Anfahrt: nur bei Art "Vor-Ort" sichtbar; Vorschlag ist die Adresse des Kunden.
+    const customerList = document.getElementById('customer-list');
+    function customerAddress(name) {
+        if (!customerList) return '';
+        const n = (name || '').trim().toLowerCase();
+        const opt = Array.from(customerList.options).find(o => o.value.toLowerCase() === n);
+        return opt ? (opt.dataset.address || '') : '';
+    }
+    function travelParts(box) {
+        return {
+            customer: box.querySelector('input[name="customer_name"], .edit-customer'),
+            type: box.querySelector('select[name="job_type"], .edit-type'),
+            field: box.querySelector('.travel-field'),
+            input: box.querySelector('input[name="travel"]'),
+        };
+    }
+    function updateTravel(box, customerChanged) {
+        const p = travelParts(box);
+        if (!p.field || !p.type) return;
+        const onsite = p.type.value === 'onsite';
+        p.field.hidden = !onsite;
+        if (!onsite) return;
+        const addr = customerAddress(p.customer ? p.customer.value : '');
+        // Nur überschreiben, wenn leer oder noch der zuletzt eingesetzte Vorschlag drinsteht.
+        const untouched = p.input.value === '' || p.input.value === (p.input.dataset.auto || '');
+        if (untouched && (customerChanged || p.input.value === '')) {
+            p.input.value = addr;
+            p.input.dataset.auto = addr;
+        }
+    }
+    document.querySelectorAll('#job-start-form, #job-create-form, .job-row[data-id]').forEach((box) => {
+        const p = travelParts(box);
+        if (!p.input) return;
+        // Bereits gespeicherte Anfahrt, die der Kundenadresse entspricht, gilt als Vorschlag.
+        if (p.customer && p.input.value !== '' && p.input.value === customerAddress(p.customer.value)) {
+            p.input.dataset.auto = p.input.value;
+        }
+        if (p.type) p.type.addEventListener('change', () => updateTravel(box, false));
+        if (p.customer) {
+            p.customer.addEventListener('input', () => updateTravel(box, true));
+            p.customer.addEventListener('change', () => updateTravel(box, true));
+        }
+        updateTravel(box, false);
+    });
+
     const startForm = document.getElementById('job-start-form');
     if (startForm) {
         startForm.addEventListener('submit', async (ev) => {
@@ -23,6 +68,7 @@
                     note: fd.get('note'),
                     customer_name: fd.get('customer_name'),
                     job_type: fd.get('job_type'),
+                    travel: fd.get('travel'),
                 });
                 window.location.reload();
             } catch (e) { Z.showError(errEl, e.message); }
@@ -45,6 +91,7 @@
                     note: fd.get('note'),
                     customer_name: fd.get('customer_name'),
                     job_type: fd.get('job_type'),
+                    travel: fd.get('travel'),
                     start_time: Z.localInputToServer(fd.get('start_time')),
                     end_time: Z.localInputToServer(fd.get('end_time')),
                 });
@@ -95,6 +142,7 @@
                 note: row.querySelector('.edit-note').value,
                 customer_name: row.querySelector('.edit-customer').value,
                 job_type: row.querySelector('.edit-type').value,
+                travel: row.querySelector('.edit-travel').value,
                 start_time: Z.localInputToServer(row.querySelector('.edit-start').value),
                 end_time: Z.localInputToServer(row.querySelector('.edit-end').value),
             };
@@ -102,6 +150,9 @@
             try {
                 const res = await Z.postForm('/api/job.php', data);
                 row.querySelector('.dur').textContent = res.duration != null ? Z.formatShort(res.duration) : '–';
+                const travelInput = row.querySelector('.edit-travel');
+                travelInput.value = res.travel || '';
+                travelInput.dataset.auto = res.travel || '';
                 ev.target.textContent = '✓';
                 setTimeout(() => { ev.target.textContent = 'Speichern'; ev.target.disabled = false; }, 1200);
             } catch (e) {

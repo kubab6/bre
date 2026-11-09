@@ -18,7 +18,7 @@ $user = viewedUser($me);
 $own = (int)$user['id'] === (int)$me['id'];
 
 // Es können mehrere Aufträge gleichzeitig laufen.
-$active = db()->prepare('SELECT id, job_name, note, start_time, customer_id, job_type FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time');
+$active = db()->prepare('SELECT id, job_name, note, start_time, customer_id, job_type, travel FROM job_entries WHERE user_id = ? AND end_time IS NULL ORDER BY start_time');
 $active->execute([$user['id']]);
 $activeJobs = $active->fetchAll();
 
@@ -54,7 +54,7 @@ $orderSql = $sort === 'customer'
     ? "c.name IS NULL, c.name COLLATE NOCASE, e.start_time DESC"
     : 'e.start_time DESC';
 $rowsStmt = db()->prepare(
-    'SELECT e.id, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded, e.customer_id, e.job_type
+    'SELECT e.id, e.job_name, e.start_time, e.end_time, e.note, e.is_recorded, e.customer_id, e.job_type, e.travel
      FROM job_entries e LEFT JOIN customers c ON c.id = e.customer_id
      WHERE ' . implode(' AND ', $where) . "
      ORDER BY $orderSql"
@@ -64,14 +64,20 @@ $rows = $rowsStmt->fetchAll();
 
 $totalsByCustomer = [];
 $grandTotal = 0;
+$workDays = [];
 foreach ($rows as $r) {
     if (!$r['end_time']) continue;
     $secs = diffSeconds($r['start_time'], $r['end_time']);
+    $workDays[substr($r['start_time'], 0, 10)] = true;
     $key = $r['customer_id'] !== null ? ($customerNames[$r['customer_id']] ?? '?') : 'Ohne Kunde';
     $totalsByCustomer[$key] = ($totalsByCustomer[$key] ?? 0) + $secs;
     $grandTotal += $secs;
 }
 arsort($totalsByCustomer);
+// Durchschnitt pro Tag (nur für Admins): Gesamtzeit geteilt durch die Tage mit Aufträgen.
+$showAverage = isAdmin($me);
+$dayCount = count($workDays);
+$dailyAverage = $dayCount ? intdiv($grandTotal, $dayCount) : 0;
 
 // Material des angezeigten Benutzers im gleichen Zeitraum und für den gewählten Kunden.
 $mWhere = ['m.user_id = ?', 'm.used_on >= ?', 'm.used_on <= ?'];
@@ -111,6 +117,7 @@ renderHeader('Aufträge', 'jobs');
                 <strong><?= h($aj['job_name']) ?></strong>
                 <?php if ($aj['job_type'] !== ''): ?> <span class="badge"><?= h(jobTypeLabel($aj['job_type'])) ?></span><?php endif; ?>
                 <?php if ($aj['note']): ?> – <em><?= h($aj['note']) ?></em><?php endif; ?>
+                <?php if ($aj['job_type'] === 'onsite' && $aj['travel'] !== ''): ?><br>Anfahrt: <?= h($aj['travel']) ?><?php endif; ?>
                 <br>seit <?= h(date('d.m. H:i', strtotime($aj['start_time']))) ?>
             </span>
             <?php if ($own): ?><button type="button" class="danger btn-job-stop" data-id="<?= (int)$aj['id'] ?>">Stoppen</button><?php endif; ?>
@@ -125,6 +132,7 @@ renderHeader('Aufträge', 'jobs');
             <label>Kunde<input type="text" name="customer_name" list="customer-list" maxlength="200" placeholder="Name eintippen" autocomplete="off"></label>
             <label>Art<select name="job_type"><?= jobTypeOptions(null) ?></select></label>
             <label>Auftrag<input type="text" name="job_name" required maxlength="200" placeholder="z.B. Drucker einrichten"></label>
+            <label class="travel-field" hidden>Anfahrt<input type="text" name="travel" maxlength="300" placeholder="Adresse / Strecke"></label>
             <label>Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
             <button type="submit" class="primary"><?= $activeJobs ? 'Weiteren starten' : 'Starten' ?></button>
         </form>
@@ -139,6 +147,7 @@ renderHeader('Aufträge', 'jobs');
             <label>Kunde<input type="text" name="customer_name" list="customer-list" maxlength="200" placeholder="Name eintippen" autocomplete="off"></label>
             <label>Art<select name="job_type"><?= jobTypeOptions(null) ?></select></label>
             <label>Auftrag<input type="text" name="job_name" required maxlength="200"></label>
+            <label class="travel-field" hidden>Anfahrt<input type="text" name="travel" maxlength="300" placeholder="Adresse / Strecke"></label>
             <label>Start<input type="datetime-local" name="start_time" required data-today></label>
             <label>Ende<input type="datetime-local" name="end_time" required data-today></label>
             <label>Notiz<input type="text" name="note" maxlength="500" placeholder="optional"></label>
@@ -160,13 +169,15 @@ renderHeader('Aufträge', 'jobs');
         <?= materialFields(null, date('Y-m-d')) ?>
         <button type="submit" class="primary">Eintragen</button>
     </form>
-    <p class="hint">Der Einkaufspreis (EK) ist nur intern sichtbar und erscheint nur im internen PDF.</p>
+    <p class="hint">Material und Einkaufspreis (EK) erscheinen nur im internen PDF, nicht im PDF für den Kunden.</p>
 </section>
 
 <section class="card">
     <div class="card-head">
         <h2><?= h($rangeTitle) ?></h2>
-        <span class="muted">Gesamt: <strong><?= h(fmtDurationShort($grandTotal)) ?></strong></span>
+        <span class="muted">Gesamt: <strong><?= h(fmtDurationShort($grandTotal)) ?></strong><?php if ($showAverage && $dayCount): ?>
+            · Ø pro Tag: <strong><?= h(fmtDurationShort($dailyAverage)) ?></strong>
+            <span title="Gesamtzeit geteilt durch die Tage mit Aufträgen">(<?= $dayCount ?> <?= $dayCount === 1 ? 'Tag' : 'Tage' ?>)</span><?php endif; ?></span>
     </div>
 
     <form method="get" action="/jobs.php" class="inline-form job-filter">
@@ -219,6 +230,7 @@ renderHeader('Aufträge', 'jobs');
                     <label>Art<select class="edit-type"><?= jobTypeOptions($r['job_type']) ?></select></label>
                     <label>Auftrag<input type="text" class="edit-job" value="<?= h($r['job_name']) ?>" maxlength="200"></label>
                     <label>Notiz<input type="text" class="edit-note" value="<?= h($r['note']) ?>" maxlength="500"></label>
+                    <label class="travel-field"<?= $r['job_type'] === 'onsite' ? '' : ' hidden' ?>>Anfahrt<input type="text" class="edit-travel" name="travel" value="<?= h($r['travel']) ?>" maxlength="300" placeholder="Adresse / Strecke"></label>
                 </div>
                 <div class="job-row-meta">
                     <label>Start<input type="datetime-local" class="edit-start" value="<?= h(toLocalInputValue($r['start_time'])) ?>"></label>
