@@ -10,7 +10,8 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 - **Aufträge** mit eigener Stoppuhr (mehrere gleichzeitig möglich), Kunde als Eingabefeld mit Vorschlägen (neue Namen werden automatisch als Kunde angelegt), Art (Fernwartung, Vor-Ort, Werkstatt), Auftragsname und Notiz; filterbar nach Kunde und Monat, sortierbar nach Datum oder Kunde; Häkchen „Abgerechnet“
 - **Kunden** mit Kundennummer, Adresse, Kontakt und Notiz; Monatsübersicht je Kunde mit Aufträgen und Material
 - **Material je Kunde** (Datum, Bezeichnung, Menge, Einheit, Einkaufspreis, Notiz, abgerechnet), erfassbar unter Aufträge und auf der Kundenseite
-- **PDF-Leistungsnachweis** je Kunde und Monat mit Aufträgen, Summen je Art und Material (ohne externe Bibliothek), als Variante für den Kunden oder intern mit Einkaufspreisen
+- **PDF-Leistungsnachweis** je Kunde und Monat mit Aufträgen, Summen je Art und Material (ohne externe Bibliothek), als Variante für den Kunden oder intern mit Einkaufspreisen; mit „Alle Kunden“ eine interne Monatsübersicht aller Aufträge und des Materials mit Summen je Kunde
+- **Arbeitszeitnachweis als PDF** je Benutzer und Monat (Arbeitszeit-Seite): Abschnitte, Pausen, Soll/Ist/Differenz je Tag, Urlaub/Krank und Summen
 - **Name** je Benutzer (z.B. für PDF-Exporte), unter Mein Konto und in der Verwaltung
 - **Zeitkonto** mit Soll/Ist/Saldo; Urlaubs- und Krankheitstage zählen nicht als Soll
 - **Kalender** für Urlaub und Krankheit, für alle Benutzer einsehbar (Notizen nur für Betroffene und Admins)
@@ -27,13 +28,13 @@ Schlankes Zeiterfassungs-Tool in PHP (ohne Framework) mit SQLite-Datenbank und e
 
 | | Benutzer | Manager | Admin |
 |---|---|---|---|
-| Eigene Arbeitszeit, Aufträge, Zeitkonto | ✓ | ✓ | ✓ |
+| Eigene Arbeitszeit, Aufträge, Zeitkonto, eigener Arbeitszeitnachweis (PDF) | ✓ | ✓ | ✓ |
 | Teamkalender ansehen, eigene Abwesenheiten | ✓ | ✓ | ✓ |
 | Eigenes Passwort ändern | ✓ | ✓ | ✓ |
-| Zeiten, Aufträge und Zeitkonto aller Benutzer ansehen und bearbeiten | | ✓ | ✓ |
+| Zeiten, Aufträge und Zeitkonto aller Benutzer ansehen und bearbeiten, Arbeitszeitnachweis (PDF) für alle | | ✓ | ✓ |
 | Alle Kalenderdetails, Abwesenheiten für andere eintragen | | ✓ | ✓ |
 | Kunden ansehen, Material eintragen, eigene Aufträge einem Kunden zuordnen | ✓ | ✓ | ✓ |
-| Kunden anlegen, bearbeiten, deaktivieren; PDF-Export je Kunde | | ✓ | ✓ |
+| Kunden anlegen, bearbeiten, deaktivieren; PDF-Export je Kunde und für alle Kunden | | ✓ | ✓ |
 | Benutzer verwalten | | ✓ (außer Admins) | ✓ |
 | CSV-Export, Protokoll aller Benutzer | | ✓ | ✓ |
 | Footer und weitere Server-Einstellungen | | | ✓ |
@@ -85,7 +86,8 @@ public/             # DocumentRoot
   log.php           # Änderungs-Protokoll
   jobs.php          # Auftragszeiten + Notizen
   customers.php     # Kunden, Monatsübersicht, Material
-  customer_pdf.php  # PDF-Leistungsnachweis je Kunde und Monat
+  customer_pdf.php  # PDF-Leistungsnachweis je Kunde und Monat (id=all: alle Kunden, intern)
+  work_pdf.php      # PDF-Arbeitszeitnachweis je Benutzer und Monat
   account.php       # Mein Konto (Passwort ändern)
   admin.php         # Verwaltung: Benutzer, Footer, CSV-Filter
   admin_export.php  # CSV-Download
