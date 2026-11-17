@@ -375,17 +375,30 @@ else:
 <section class="card">
     <h2>PDF-Export je Kunde</h2>
     <form method="get" action="/customer_pdf.php" class="inline-form" target="_blank">
-        <label>Kunde<select name="id" required><?= customerOptions(customerList(true), null, '– Kunde wählen –') ?></select></label>
+        <label>Kunde<select name="id" required data-pdf-customer><?= preg_replace('/<\/option>/', '</option><option value="all">Alle Kunden (nur intern)</option>', customerOptions(customerList(true), null, '– Kunde wählen –'), 1) ?></select></label>
         <label>Monat<select name="month" required><?= monthOptions(date('Y-m')) ?></select></label>
         <label>Variante
-            <select name="variant">
+            <select name="variant" data-pdf-variant>
                 <option value="customer">Für Kunden</option>
                 <option value="internal">Intern (mit Material und EK-Preisen)</option>
             </select>
         </label>
         <button type="submit" class="primary">PDF erstellen</button>
     </form>
-    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) des Kunden im gewählten Monat, bei Vor-Ort-Aufträgen mit Anfahrt. Material mit Einkaufspreisen steht nur in der internen Variante.</p>
+    <p class="hint">Enthält alle Aufträge (aller Mitarbeiter) des Kunden im gewählten Monat, bei Vor-Ort-Aufträgen mit Anfahrt. Material mit Einkaufspreisen steht nur in der internen Variante. „Alle Kunden“ erstellt eine interne Übersicht aller Aufträge und des Materials des Monats mit Summen je Kunde.</p>
+    <script>
+    (function () {
+        var c = document.querySelector('[data-pdf-customer]'), v = document.querySelector('[data-pdf-variant]');
+        if (!c || !v) return;
+        function sync() {
+            var all = c.value === 'all';
+            v.querySelector('option[value="customer"]').disabled = all;
+            if (all) v.value = 'internal';
+        }
+        c.addEventListener('change', sync);
+        sync();
+    })();
+    </script>
 </section>
 <?php endif; ?>
 

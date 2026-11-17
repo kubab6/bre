@@ -157,3 +157,135 @@ final class SimplePdf {
         return $this->widthCache[$font] ??= array_map('intval', explode(',', self::WIDTHS[$font]));
     }
 }
+
+/**
+ * Seitenlayout für Berichte: Tabellen mit Kopfzeile, Zeilenumbruch je Zelle,
+ * automatischem Seitenwechsel (Kopf wird wiederholt) und Fußzeile mit Seitenzahlen.
+ * Spalten: [Titel, x, Breite, Ausrichtung L/R].
+ */
+final class PdfReport {
+    public SimplePdf $pdf;
+    public float $y = 0.0;
+    public float $left = 15.0;
+    public float $right = SimplePdf::W - 15.0;
+    public float $bottom = SimplePdf::H - 20.0;
+    public float $lh = 4.4;
+
+    public function __construct() {
+        $this->pdf = new SimplePdf();
+        $this->newPage();
+    }
+
+    public function newPage(): void {
+        $this->pdf->addPage();
+        $this->y = 20.0;
+    }
+
+    public function head(array $cols): void {
+        $p = $this->pdf;
+        $p->setFillGray(0.92);
+        $p->fillRect($this->left, $this->y - 4.2, $this->right - $this->left, 6.2);
+        $p->setFillGray(0);
+        $p->setFont('B', 8.5);
+        foreach ($cols as [$title, $x, $w, $align]) {
+            $p->text($align === 'R' ? $x + $w : $x, $this->y, $title, $align);
+        }
+        $this->y += 6.0;
+    }
+
+    /** Platz prüfen; bei Seitenumbruch ggf. Tabellenkopf wiederholen. */
+    public function ensure(float $needed, ?array $cols = null): void {
+        if ($this->y + $needed <= $this->bottom) return;
+        $this->newPage();
+        if ($cols) $this->head($cols);
+    }
+
+    /** Tabellenzeile; $bold: Zeile fett (z.B. Summen), $shade: grauer Hintergrund. */
+    public function row(array $cols, array $cells, bool $bold = false, bool $shade = false): void {
+        $p = $this->pdf;
+        $style = $bold ? 'B' : 'R';
+        $p->setFont($style, 8.5);
+        $wrapped = [];
+        $lines = 1;
+        foreach ($cols as $i => [, , $w]) {
+            $wrapped[$i] = $p->wrap((string)($cells[$i] ?? ''), $w - 1.5);
+            $lines = max($lines, count($wrapped[$i]));
+        }
+        $this->ensure($lines * $this->lh + 1.5, $cols);
+        if ($shade) {
+            $p->setFillGray(0.96);
+            $p->fillRect($this->left, $this->y - 3.4, $this->right - $this->left, ($lines - 1) * $this->lh + 5.6);
+            $p->setFillGray(0);
+        }
+        $p->setFont($style, 8.5);
+        foreach ($cols as $i => [, $x, $w, $align]) {
+            foreach ($wrapped[$i] as $n => $line) {
+                $p->text($align === 'R' ? $x + $w : $x, $this->y + $n * $this->lh, $line, $align);
+            }
+        }
+        $this->y += ($lines - 1) * $this->lh + 2.2;
+        $p->setStrokeGray(0.8);
+        $p->line($this->left, $this->y, $this->right, $this->y, 0.15);
+        $p->setStrokeGray(0);
+        $this->y += $this->lh;
+    }
+
+    /** Abschnittsüberschrift. */
+    public function section(string $title): void {
+        $this->ensure(20);
+        $this->pdf->setFont('B', 11);
+        $this->pdf->text($this->left, $this->y, $title);
+        $this->y += 6;
+    }
+
+    public function note(string $text): void {
+        $this->pdf->setFont('R', 9);
+        $this->pdf->text($this->left, $this->y, $text);
+        $this->y += 8;
+    }
+
+    /** Rechtsbündige Infozeilen (Schlüssel/Wert) ab x=130; gibt die Endposition zurück. */
+    public function meta(array $meta, float $y): float {
+        foreach ($meta as $k => $v) {
+            $this->pdf->setFont('B', 9);
+            $this->pdf->text(130, $y, (string)$k);
+            $this->pdf->setFont('R', 9);
+            $this->pdf->text($this->right, $y, (string)$v, 'R');
+            $y += 4.8;
+        }
+        return $y;
+    }
+
+    /** Fußzeile auf allen Seiten und PDF als Download/Inline senden. */
+    public function send(string $footer, string $title, string $filename): void {
+        $p = $this->pdf;
+        $pages = $p->pageCount();
+        for ($i = 0; $i < $pages; $i++) {
+            $p->selectPage($i);
+            $p->setStrokeGray(0.6);
+            $p->line($this->left, SimplePdf::H - 13, $this->right, SimplePdf::H - 13, 0.2);
+            $p->setFont('R', 7.5);
+            $p->text($this->left, SimplePdf::H - 9, $footer);
+            $p->text($this->right, SimplePdf::H - 9, 'Seite ' . ($i + 1) . ' von ' . $pages, 'R');
+        }
+        $data = $p->output($title);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($data));
+        echo $data;
+    }
+}
+
+/** Dauer als Stunden:Minuten, z.B. "1:30 h". */
+function fmtHours(int $secs): string {
+    $neg = $secs < 0;
+    $min = (int)round(abs($secs) / 60);
+    return ($neg ? '-' : '') . sprintf('%d:%02d h', intdiv($min, 60), $min % 60);
+}
+
+/** Dateiname-tauglicher Teil aus einem Namen (Umlaute ersetzt). */
+function fileSlug(string $name, string $fallback): string {
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT', strtr($name, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'Ä' => 'Ae', 'Ö' => 'Oe', 'Ü' => 'Ue', 'ß' => 'ss']));
+    $slug = trim((string)preg_replace('/[^A-Za-z0-9]+/', '_', $ascii ?: ''), '_');
+    return $slug !== '' ? $slug : $fallback;
+}

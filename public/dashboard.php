@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/layout.php';
+require_once __DIR__ . '/../includes/customers.php';
 
 $me = requireLogin();
 $user = viewedUser($me);
@@ -143,6 +144,16 @@ renderHeader('Arbeitszeit', 'dashboard');
             </div>
         <?php endforeach; ?>
     </div>
+</section>
+
+<section class="card">
+    <h2>Monatsnachweis (PDF)</h2>
+    <form method="get" action="/work_pdf.php" class="inline-form" target="_blank">
+        <?php if (!$own): ?><input type="hidden" name="user" value="<?= (int)$user['id'] ?>"><?php endif; ?>
+        <label>Monat<select name="month" required><?= monthOptions(date('Y-m')) ?></select></label>
+        <button type="submit" class="primary">PDF erstellen</button>
+    </form>
+    <p class="hint">Alle Arbeitszeiten<?= $own ? '' : ' von <strong>' . h(displayName($user)) . '</strong>' ?> im Monat mit Pausen, Soll, Ist und Differenz je Tag.</p>
 </section>
 <?php
 renderFooter('/assets/dashboard.js');
